@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import http from '@/api/http'
+import * as menuApi from '@/api/menu'
 
 export interface MenuItem {
   id: number
@@ -21,7 +21,7 @@ export const useMenuStore = defineStore('menu', () => {
   async function fetchMenus() {
     loading.value = true
     try {
-      menuList.value = await http.get('/api/menus/tree')
+      menuList.value = await menuApi.getMenuTree() as MenuItem[]
     } catch {
       ElMessage.error('无法连接到后端服务，请确认后端已启动（端口 5000）')
     } finally {
@@ -29,5 +29,30 @@ export const useMenuStore = defineStore('menu', () => {
     }
   }
 
-  return { menuList, loading, fetchMenus }
+  /** 新增一级菜单 */
+  async function addLevel1(name: string, icon?: string) {
+    await menuApi.addLevel1Menu({ name, icon })
+    await fetchMenus()
+  }
+
+  /** 新增二级菜单，返回后端新建的菜单对象 */
+  async function addLevel2(parentId: number, name: string, icon?: string): Promise<MenuItem> {
+    const result = await menuApi.addLevel2Menu({ name, icon, parentId }) as MenuItem
+    await fetchMenus()
+    return result
+  }
+
+  /** 修改菜单名称 */
+  async function updateMenu(id: number, name: string, icon?: string) {
+    await menuApi.updateMenu(id, { name, icon })
+    await fetchMenus()
+  }
+
+  /** 删除菜单 */
+  async function deleteMenu(id: number) {
+    await menuApi.deleteMenu(id)
+    await fetchMenus()
+  }
+
+  return { menuList, loading, fetchMenus, addLevel1, addLevel2, updateMenu, deleteMenu }
 })
