@@ -23,8 +23,8 @@ public class DynamicDataController : ControllerBase
     }
 
     /// <summary>
-    /// 分页查询模块数据，支持关键词搜索和字段级筛选
-    /// GET /api/menus/{menuId}/data
+    /// 分页查询模块数据，支持关键词搜索、字段级筛选、批次过滤
+    /// GET /api/menus/{menuId}/data?batchId=latest
     /// </summary>
     [HttpGet("api/menus/{menuId:int}/data")]
     public async Task<IActionResult> Query(
@@ -32,7 +32,8 @@ public class DynamicDataController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 100,
         [FromQuery] string? keyword = null,
-        [FromQuery] string? filters = null)
+        [FromQuery] string? filters = null,
+        [FromQuery] string? batchId = null)
     {
         var template = await _db.FormTemplates
             .Include(t => t.Fields)
@@ -45,13 +46,24 @@ public class DynamicDataController : ControllerBase
 
         var filterList = DeserializeFilters(filters);
         var (total, items) = await _dataService.QueryAsync(
-            menuId, page, pageSize, keyword, filterList, fields);
+            menuId, page, pageSize, keyword, filterList, fields, batchId);
 
         return Ok(new { total, items });
     }
 
     /// <summary>
-    /// 下载 Excel 导入模板（必填列黄色、下拉验证、批注）
+    /// 获取批次号列表（倒序），用于批次选择器
+    /// GET /api/menus/{menuId}/data/batches
+    /// </summary>
+    [HttpGet("api/menus/{menuId:int}/data/batches")]
+    public async Task<IActionResult> GetBatches(int menuId)
+    {
+        var batches = await _dataService.GetBatchIdsAsync(menuId);
+        return Ok(batches);
+    }
+
+    /// <summary>
+    /// 下载 Excel 导入模板
     /// GET /api/menus/{menuId}/data/template
     /// </summary>
     [HttpGet("api/menus/{menuId:int}/data/template")]
@@ -70,15 +82,16 @@ public class DynamicDataController : ControllerBase
     }
 
     /// <summary>
-    /// 导出当前筛选结果为 Excel（全量，不受分页限制）
-    /// GET /api/menus/{menuId}/data/export?keyword=...&amp;filters=...&amp;columns=...
+    /// 导出当前筛选结果为 Excel
+    /// GET /api/menus/{menuId}/data/export
     /// </summary>
     [HttpGet("api/menus/{menuId:int}/data/export")]
     public async Task<IActionResult> ExportExcel(
         int menuId,
         [FromQuery] string? keyword = null,
         [FromQuery] string? filters = null,
-        [FromQuery] string? columns = null)
+        [FromQuery] string? columns = null,
+        [FromQuery] string? batchId = null)
     {
         var template = await _db.FormTemplates
             .Include(t => t.Fields)
@@ -88,7 +101,7 @@ public class DynamicDataController : ControllerBase
 
         var fields = template.Fields.OrderBy(f => f.ColumnOrder).ToList();
         var filterList = DeserializeFilters(filters);
-        var rows = await _dataService.QueryAllAsync(menuId, keyword, filterList, fields);
+        var rows = await _dataService.QueryAllAsync(menuId, keyword, filterList, fields, batchId);
 
         List<string>? selectedColumns = null;
         if (!string.IsNullOrWhiteSpace(columns))
@@ -104,12 +117,11 @@ public class DynamicDataController : ControllerBase
     }
 
     /// <summary>
-    /// 从 Excel 文件批量导入数据
-    /// POST /api/menus/{menuId}/data/import（multipart/form-data，file 字段）
-    /// 返回 { imported: N, errors: [...] }
+    /// 预览导入数据（解析+校验，不保存），返回每行的状态和错误信息
+    /// POST /api/menus/{menuId}/data/import/preview
     /// </summary>
-    [HttpPost("api/menus/{menuId:int}/data/import")]
-    public async Task<IActionResult> ImportExcel(int menuId, IFormFile file)
+    [HttpPost("api/menus/{menuId:int}/data/import/preview")]
+    public async Task<IActionResult> PreviewImport(int menuId, IFormFile file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "请选择 Excel 文件" });
@@ -121,7 +133,6 @@ public class DynamicDataController : ControllerBase
             return NotFound(new { message = "该菜单尚未配置表单模板" });
 
         var fields = template.Fields.OrderBy(f => f.ColumnOrder).ToList();
-        await _dataService.EnsureTableAsync(menuId, fields);
 
         List<Dictionary<string, string?>> dataRows;
         try
@@ -137,34 +148,64 @@ public class DynamicDataController : ControllerBase
         if (dataRows.Count == 0)
             return BadRequest(new { message = "文件中未读取到有效数据行" });
 
-        // 逐行校验并插入
-        var errors = new List<string>();
-        int imported = 0;
+        var rows = new List<object>();
+        int successCount = 0;
+        int errorCount = 0;
 
         for (int i = 0; i < dataRows.Count; i++)
         {
             var row = dataRows[i];
-            // 必填校验
-            var missingFields = fields
-                .Where(f => f.IsRequired && string.IsNullOrWhiteSpace(row.GetValueOrDefault(f.FieldName)))
-                .Select(f => f.Label)
-                .ToList();
+            var errors = new List<string>();
 
-            if (missingFields.Count > 0)
+            foreach (var f in fields.Where(f => f.IsRequired))
             {
-                errors.Add($"第 {i + 2} 行：{string.Join("、", missingFields)} 为必填项");
-                continue;
+                if (!row.TryGetValue(f.FieldName, out var val) || string.IsNullOrWhiteSpace(val))
+                    errors.Add($"【{f.Label}】不能为空");
             }
 
-            await _dataService.InsertAsync(menuId, row!);
-            imported++;
+            var status = errors.Count == 0 ? "ok" : "error";
+            if (status == "ok") successCount++; else errorCount++;
+
+            rows.Add(new
+            {
+                rowIndex = i + 2,   // Excel 行号（第1行是标题，数据从第2行开始）
+                data = row,
+                status,
+                errors
+            });
         }
 
-        return Ok(new { imported, errors });
+        return Ok(new { rows, successCount, errorCount });
     }
 
     /// <summary>
-    /// 新增一条数据记录
+    /// 确认导入数据（保存有效行到数据库，绑定批次号）
+    /// POST /api/menus/{menuId}/data/import/confirm
+    /// </summary>
+    [HttpPost("api/menus/{menuId:int}/data/import/confirm")]
+    public async Task<IActionResult> ConfirmImport(int menuId, [FromBody] ConfirmImportRequest req)
+    {
+        var template = await _db.FormTemplates
+            .Include(t => t.Fields)
+            .FirstOrDefaultAsync(t => t.MenuId == menuId);
+        if (template == null)
+            return NotFound(new { message = "该菜单尚未配置表单模板" });
+
+        var fields = template.Fields.OrderBy(f => f.ColumnOrder).ToList();
+        await _dataService.EnsureTableAsync(menuId, fields);
+
+        int imported = 0;
+        foreach (var row in req.Rows)
+        {
+            await _dataService.InsertAsync(menuId, row!, req.BatchId);
+            imported++;
+        }
+
+        return Ok(new { imported, batchId = req.BatchId });
+    }
+
+    /// <summary>
+    /// 新增一条数据记录（手动添加，_BatchId = null）
     /// POST /api/menus/{menuId}/data
     /// </summary>
     [HttpPost("api/menus/{menuId:int}/data")]
@@ -219,3 +260,9 @@ public class DynamicDataController : ControllerBase
         catch { return null; }
     }
 }
+
+/// <summary>确认导入请求体</summary>
+public record ConfirmImportRequest(
+    string BatchId,
+    List<Dictionary<string, string?>> Rows
+);

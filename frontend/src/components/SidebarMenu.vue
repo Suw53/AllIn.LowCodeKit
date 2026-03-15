@@ -3,11 +3,13 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useMenuStore, type MenuItem } from '@/stores/menuStore'
+import { useTabStore } from '@/stores/tabStore'
 import ContextMenu from '@/components/ContextMenu.vue'
 import IconPicker from '@/components/IconPicker.vue'
 
 const router = useRouter()
 const menuStore = useMenuStore()
+const tabStore = useTabStore()
 const collapsed = ref(false)
 const sidebarRef = ref<HTMLElement>()
 
@@ -194,10 +196,22 @@ async function doDelete(menu: MenuItem) {
 
 // ────────── 导航 ──────────
 function navigate(menu: MenuItem) {
+  // 找到父菜单名用于Tab标题
+  let tabTitle = menu.name
+  for (const m of menuStore.menuList) {
+    if (m.children.some(c => c.id === menu.id)) {
+      tabTitle = `${m.name} / ${menu.name}`
+      break
+    }
+  }
+
   if (menu.isSystem) {
+    tabStore.openTab('/global-config', '全局配置')
     router.push('/global-config')
   } else {
-    router.push(`/module/${menu.id}`)
+    const path = `/module/${menu.id}`
+    tabStore.openTab(path, tabTitle)
+    router.push(path)
   }
 }
 </script>

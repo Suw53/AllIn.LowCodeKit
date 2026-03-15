@@ -5,6 +5,7 @@ namespace AllIn.LowCodeKit.Backend.Services;
 
 /// <summary>
 /// 动态数据表服务：按菜单Id动态创建 DynamicData_{menuId} 表，并提供原生SQL的增删改查
+/// 系统列：Id, CreatedAt, UpdatedAt, _BatchId
 /// </summary>
 public class DynamicDataService
 {
@@ -12,7 +13,6 @@ public class DynamicDataService
 
     public DynamicDataService(IConfiguration configuration)
     {
-        // 从连接字符串中取出数据库路径
         var dbPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "AllIn.LowCodeKit",
@@ -22,7 +22,8 @@ public class DynamicDataService
     }
 
     /// <summary>
-    /// 确保动态数据表存在，若字段新增则同步 ALTER TABLE 加列
+    /// 确保动态数据表存在，若字段新增则同步 ALTER TABLE 加列。
+    /// 系统列：Id, CreatedAt, UpdatedAt, _BatchId（批次号，导入时赋值，手动添加为null）
     /// </summary>
     public async Task EnsureTableAsync(int menuId, IEnumerable<FormField> fields)
     {
@@ -32,26 +33,37 @@ public class DynamicDataService
         await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
 
-        // 建表（不存在则建）
         var columnDefs = fieldList
             .Select(f => $"    \"{f.FieldName}\" TEXT")
             .ToList();
+
         var createSql = $"""
             CREATE TABLE IF NOT EXISTS "{tableName}" (
                 "Id" INTEGER PRIMARY KEY AUTOINCREMENT,
                 "CreatedAt" TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-                "UpdatedAt" TEXT NOT NULL DEFAULT (datetime('now','localtime')){(columnDefs.Count > 0 ? "," : "")}
+                "UpdatedAt" TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                "_BatchId" TEXT NULL{(columnDefs.Count > 0 ? "," : "")}
                 {string.Join(",\n                ", columnDefs)}
             )
             """;
+
         await using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = createSql;
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // 同步新增列（字段扩展场景）
+        // 同步新增列（字段扩展 + 旧表缺少 _BatchId 的情况）
         var existing = await GetExistingColumnsAsync(conn, tableName);
+
+        // 确保 _BatchId 列存在（升级旧表）
+        if (!existing.Contains("_BatchId"))
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"ALTER TABLE \"{tableName}\" ADD COLUMN \"_BatchId\" TEXT NULL";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         foreach (var f in fieldList)
         {
             if (!existing.Contains(f.FieldName))
@@ -64,7 +76,8 @@ public class DynamicDataService
     }
 
     /// <summary>
-    /// 分页查询数据列表，支持关键词搜索和字段级筛选
+    /// 分页查询数据列表，支持关键词搜索、字段级筛选、批次过滤
+    /// batchId = null → 全部数据；batchId = "latest" → 仅最新批次；其他 → 精确匹配
     /// </summary>
     public async Task<(int Total, List<Dictionary<string, object?>> Items)> QueryAsync(
         int menuId,
@@ -72,16 +85,18 @@ public class DynamicDataService
         int pageSize,
         string? keyword,
         List<FilterCondition>? filters,
-        IEnumerable<FormField> fields)
+        IEnumerable<FormField> fields,
+        string? batchId = null)
     {
-        var tableName = TableName(menuId);
-        var fieldNames = fields.Select(f => f.FieldName).ToList();
-        var (whereSql, parameters) = BuildWhere(keyword, filters, fieldNames);
-
         await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
 
-        // 查总数
+        var resolvedBatchId = await ResolveBatchIdAsync(conn, menuId, batchId);
+
+        var tableName = TableName(menuId);
+        var fieldNames = fields.Select(f => f.FieldName).ToList();
+        var (whereSql, parameters) = BuildWhere(keyword, filters, fieldNames, resolvedBatchId);
+
         int total;
         await using (var cmd = conn.CreateCommand())
         {
@@ -90,7 +105,6 @@ public class DynamicDataService
             total = Convert.ToInt32(await cmd.ExecuteScalarAsync() ?? 0);
         }
 
-        // 查分页数据
         var items = new List<Dictionary<string, object?>>();
         var offset = (page - 1) * pageSize;
         await using (var cmd = conn.CreateCommand())
@@ -110,19 +124,22 @@ public class DynamicDataService
         return (total, items);
     }
 
-    /// <summary>查询全部匹配数据（不分页，用于导出）</summary>
+    /// <summary>查询全部匹配数据（不分页，用于导出），支持批次过滤</summary>
     public async Task<List<Dictionary<string, object?>>> QueryAllAsync(
         int menuId,
         string? keyword,
         List<FilterCondition>? filters,
-        IEnumerable<FormField> fields)
+        IEnumerable<FormField> fields,
+        string? batchId = null)
     {
-        var tableName = TableName(menuId);
-        var fieldNames = fields.Select(f => f.FieldName).ToList();
-        var (whereSql, parameters) = BuildWhere(keyword, filters, fieldNames);
-
         await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
+
+        var resolvedBatchId = await ResolveBatchIdAsync(conn, menuId, batchId);
+
+        var tableName = TableName(menuId);
+        var fieldNames = fields.Select(f => f.FieldName).ToList();
+        var (whereSql, parameters) = BuildWhere(keyword, filters, fieldNames, resolvedBatchId);
 
         var items = new List<Dictionary<string, object?>>();
         await using var cmd = conn.CreateCommand();
@@ -140,19 +157,46 @@ public class DynamicDataService
         return items;
     }
 
-    /// <summary>插入一条记录，返回新行 Id</summary>
-    public async Task<long> InsertAsync(int menuId, Dictionary<string, string?> data)
+    /// <summary>获取所有批次号列表（按时间倒序），用于批次选择器</summary>
+    public async Task<List<string>> GetBatchIdsAsync(int menuId)
     {
         var tableName = TableName(menuId);
-        // 过滤掉系统列
+        var result = new List<string>();
+
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+
+        // 表不存在时直接返回空列表
+        var tableExists = await TableExistsAsync(conn, tableName);
+        if (!tableExists) return result;
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT DISTINCT \"_BatchId\" FROM \"{tableName}\" WHERE \"_BatchId\" IS NOT NULL ORDER BY \"_BatchId\" DESC";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            result.Add(reader.GetString(0));
+
+        return result;
+    }
+
+    /// <summary>插入一条记录，支持指定批次号（null表示手动添加）</summary>
+    public async Task<long> InsertAsync(int menuId, Dictionary<string, string?> data, string? batchId = null)
+    {
+        var tableName = TableName(menuId);
         var safeData = data.Where(kv => !IsSystemColumn(kv.Key)).ToList();
 
         var cols = safeData.Select(kv => $"\"{kv.Key}\"").ToList();
         var paramNames = safeData.Select((_, i) => $"@v{i}").ToList();
 
+        // 追加 _BatchId 和 UpdatedAt
+        cols.Add("\"_BatchId\"");
+        cols.Add("\"UpdatedAt\"");
+        paramNames.Add("@batchId");
+        paramNames.Add("datetime('now','localtime')");
+
         var sql = $"""
-            INSERT INTO "{tableName}" ({string.Join(", ", cols)}, "UpdatedAt")
-            VALUES ({string.Join(", ", paramNames)}, datetime('now','localtime'));
+            INSERT INTO "{tableName}" ({string.Join(", ", cols)})
+            VALUES ({string.Join(", ", paramNames)});
             SELECT last_insert_rowid();
             """;
 
@@ -167,6 +211,11 @@ public class DynamicDataService
             p.Value = (object?)safeData[i].Value ?? DBNull.Value;
             cmd.Parameters.Add(p);
         }
+        var bp = cmd.CreateParameter();
+        bp.ParameterName = "@batchId";
+        bp.Value = (object?)batchId ?? DBNull.Value;
+        cmd.Parameters.Add(bp);
+
         return Convert.ToInt64(await cmd.ExecuteScalarAsync() ?? 0);
     }
 
@@ -225,7 +274,35 @@ public class DynamicDataService
     private static bool IsSystemColumn(string name) =>
         name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("CreatedAt", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("UpdatedAt", StringComparison.OrdinalIgnoreCase);
+        name.Equals("UpdatedAt", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("_BatchId", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 解析批次参数：null→null（无过滤），"latest"→最新批次ID（若无则null），其他→原值
+    /// </summary>
+    private static async Task<string?> ResolveBatchIdAsync(SqliteConnection conn, int menuId, string? batchId)
+    {
+        if (string.IsNullOrEmpty(batchId) || batchId != "latest") return batchId;
+
+        var tableName = TableName(menuId);
+        if (!await TableExistsAsync(conn, tableName)) return null;
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT MAX(\"_BatchId\") FROM \"{tableName}\" WHERE \"_BatchId\" IS NOT NULL";
+        var result = await cmd.ExecuteScalarAsync();
+        return result == DBNull.Value || result == null ? null : result.ToString();
+    }
+
+    private static async Task<bool> TableExistsAsync(SqliteConnection conn, string tableName)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=@name";
+        var p = cmd.CreateParameter();
+        p.ParameterName = "@name";
+        p.Value = tableName;
+        cmd.Parameters.Add(p);
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+    }
 
     private static async Task<HashSet<string>> GetExistingColumnsAsync(SqliteConnection conn, string tableName)
     {
@@ -234,20 +311,20 @@ public class DynamicDataService
         cmd.CommandText = $"PRAGMA table_info(\"{tableName}\")";
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            set.Add(reader.GetString(1)); // name 列
+            set.Add(reader.GetString(1));
         return set;
     }
 
     private static (string Sql, Dictionary<string, object> Parameters) BuildWhere(
         string? keyword,
         List<FilterCondition>? filters,
-        List<string> fieldNames)
+        List<string> fieldNames,
+        string? batchId)
     {
         var conditions = new List<string>();
         var parameters = new Dictionary<string, object>();
         int idx = 0;
 
-        // 关键词：对所有字段做 LIKE 搜索
         if (!string.IsNullOrWhiteSpace(keyword) && fieldNames.Count > 0)
         {
             var clauses = fieldNames.Select(f => $"\"{f}\" LIKE @kw").ToList();
@@ -255,7 +332,6 @@ public class DynamicDataService
             parameters["@kw"] = $"%{keyword}%";
         }
 
-        // 字段级筛选
         if (filters?.Count > 0)
         {
             foreach (var f in filters)
@@ -268,12 +344,19 @@ public class DynamicDataService
                     conditions.Add($"\"{f.Field}\" LIKE {pName}");
                     parameters[pName] = $"%{f.Value}%";
                 }
-                else // eq
+                else
                 {
                     conditions.Add($"\"{f.Field}\" = {pName}");
                     parameters[pName] = f.Value;
                 }
             }
+        }
+
+        // 批次过滤（已由 ResolveBatchIdAsync 解析 "latest"）
+        if (!string.IsNullOrEmpty(batchId))
+        {
+            conditions.Add("\"_BatchId\" = @batchId");
+            parameters["@batchId"] = batchId;
         }
 
         var sql = conditions.Count > 0 ? " WHERE " + string.Join(" AND ", conditions) : "";
@@ -295,12 +378,7 @@ public class DynamicDataService
 /// <summary>字段级筛选条件</summary>
 public class FilterCondition
 {
-    /// <summary>字段名（FormField.FieldName）</summary>
     public string Field { get; set; } = string.Empty;
-
-    /// <summary>操作符：eq（精确匹配）/ contains（模糊匹配）</summary>
     public string Op { get; set; } = "contains";
-
-    /// <summary>筛选值</summary>
     public string Value { get; set; } = string.Empty;
 }

@@ -1,4 +1,4 @@
-<!-- 模块数据列表页：VXE-Table 动态列、搜索、筛选、新增/编辑/删除、Excel 导入导出 -->
+<!-- 模块数据列表页：VXE-Table 动态列、搜索、筛选、新增/编辑/删除、Excel 导入导出、批次管理 -->
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -6,9 +6,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useMenuStore } from '@/stores/menuStore'
 import { useModuleStore } from '@/stores/moduleStore'
 import { useFormTemplateStore } from '@/stores/formTemplateStore'
+import { useTabStore } from '@/stores/tabStore'
+import { previewImport } from '@/api/data'
 import DataForm from '@/components/DataForm.vue'
 import DataFilter from '@/components/DataFilter.vue'
-import type { DataRow } from '@/types'
+import ImportPreviewDialog from '@/components/ImportPreviewDialog.vue'
+import type { DataRow, FormField } from '@/types'
+import type { PreviewRow } from '@/api/data'
 
 // ────────── 路由 & Store ──────────
 const route = useRoute()
@@ -16,8 +20,19 @@ const router = useRouter()
 const menuStore = useMenuStore()
 const store = useModuleStore()
 const templateStore = useFormTemplateStore()
+const tabStore = useTabStore()
 
 const menuId = computed(() => Number(route.params.menuId))
+
+// 一级菜单名
+const parentMenuName = computed(() => {
+  for (const m of menuStore.menuList) {
+    if (m.children.some(c => c.id === menuId.value)) return m.name
+  }
+  return ''
+})
+
+// 二级菜单名
 const menuName = computed(() => {
   for (const m of menuStore.menuList) {
     const child = m.children.find(c => c.id === menuId.value)
@@ -25,6 +40,11 @@ const menuName = computed(() => {
   }
   return `模块 #${menuId.value}`
 })
+
+// 顶部标题：一级 / 二级
+const fullTitle = computed(() =>
+  parentMenuName.value ? `${parentMenuName.value} / ${menuName.value}` : menuName.value
+)
 
 // ────────── 字段列定义（按 columnOrder 排序） ──────────
 const sortedFields = computed(() =>
@@ -38,11 +58,14 @@ async function loadModule(id: number) {
   await templateStore.loadByMenu(id)
   if (templateStore.template) {
     await Promise.all([
-      store.fetchData(id),
+      store.fetchBatchIds(id),
       store.fetchFilterSchemes(id),
       store.fetchExportPreference(id)
     ])
+    await store.fetchData(id)
   }
+  // 更新 Tab 标题为完整名称
+  tabStore.updateTitle(route.path, fullTitle.value)
 }
 
 onMounted(() => loadModule(menuId.value))
@@ -60,6 +83,13 @@ function onKeywordChange() {
     store.page = 1
     store.fetchData(menuId.value)
   }, 300)
+}
+
+// ────────── 批次选择 ──────────
+function onBatchChange(val: string) {
+  store.currentBatchId = val
+  store.page = 1
+  store.fetchData(menuId.value)
 }
 
 // ────────── 高级筛选 ──────────
@@ -88,6 +118,7 @@ async function onDeleteScheme(id: number) {
 // ────────── 新增/编辑 ──────────
 const formVisible = ref(false)
 const editingRow = ref<DataRow | undefined>()
+const formSubmitting = ref(false)
 
 function openAdd() {
   editingRow.value = undefined
@@ -100,6 +131,7 @@ function openEdit(row: DataRow) {
 }
 
 async function handleFormSubmit(data: Record<string, string | null>) {
+  formSubmitting.value = true
   try {
     if (editingRow.value) {
       await store.editRow(menuId.value, Number(editingRow.value['Id']), data)
@@ -111,21 +143,29 @@ async function handleFormSubmit(data: Record<string, string | null>) {
     formVisible.value = false
   } catch {
     ElMessage.error('操作失败')
+  } finally {
+    formSubmitting.value = false
   }
 }
 
 // ────────── 删除 ──────────
+const deletingId = ref<number | null>(null)
+
 async function handleDelete(row: DataRow) {
   await ElMessageBox.confirm('确定删除该条记录？', '提示', {
     confirmButtonText: '删除',
     cancelButtonText: '取消',
     type: 'warning'
   })
+  const id = Number(row['Id'])
+  deletingId.value = id
   try {
-    await store.removeRow(menuId.value, Number(row['Id']))
+    await store.removeRow(menuId.value, id)
     ElMessage.success('删除成功')
   } catch {
     ElMessage.error('删除失败')
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -154,12 +194,25 @@ async function handleDownloadTemplate() {
   }
 }
 
-// ────────── Excel 导入 ──────────
+// ────────── Excel 导入（两步：预览 → 确认） ──────────
 const importInputRef = ref<HTMLInputElement>()
-const importing = ref(false)
+const previewing = ref(false)
+const previewVisible = ref(false)
+const previewRows = ref<PreviewRow[]>([])
+const previewBatchId = ref('')
+const confirming = ref(false)
 
 function triggerImport() {
   importInputRef.value?.click()
+}
+
+/** 生成批次号：BATCH-YYYYMMDD-HHmmss */
+function generateBatchId(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+  const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+  return `BATCH-${date}-${time}`
 }
 
 async function handleImportFile(e: Event) {
@@ -167,22 +220,33 @@ async function handleImportFile(e: Event) {
   if (!file) return
   ;(e.target as HTMLInputElement).value = ''
 
-  importing.value = true
+  previewing.value = true
   try {
-    const result = await store.importFromExcel(menuId.value, file)
-    if (result.errors.length > 0) {
-      ElMessageBox.alert(
-        `成功导入 ${result.imported} 条，${result.errors.length} 条失败：\n${result.errors.slice(0, 10).join('\n')}`,
-        '导入结果',
-        { type: result.imported > 0 ? 'warning' : 'error' }
-      )
-    } else {
-      ElMessage.success(`成功导入 ${result.imported} 条数据`)
-    }
+    const result = await previewImport(menuId.value, file)
+    previewRows.value = result.rows
+    previewBatchId.value = generateBatchId()
+    previewVisible.value = true
   } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '导入失败')
+    ElMessage.error(err instanceof Error ? err.message : '文件解析失败')
   } finally {
-    importing.value = false
+    previewing.value = false
+  }
+}
+
+async function handleConfirmImport() {
+  const validRows = previewRows.value
+    .filter(r => r.status === 'ok')
+    .map(r => r.data)
+
+  confirming.value = true
+  try {
+    const result = await store.importConfirm(menuId.value, previewBatchId.value, validRows)
+    previewVisible.value = false
+    ElMessage.success(`成功导入 ${result.imported} 条，批次号：${result.batchId}`)
+  } catch {
+    ElMessage.error('导入失败')
+  } finally {
+    confirming.value = false
   }
 }
 
@@ -218,7 +282,7 @@ async function handleExport() {
     <!-- ── 顶部工具栏 ── -->
     <div class="module-header">
       <div class="header-left">
-        <span class="page-title">{{ menuName }}</span>
+        <span class="page-title">{{ fullTitle }}</span>
         <el-tag v-if="store.total > 0" type="info" size="small">共 {{ store.total }} 条</el-tag>
       </div>
       <div class="header-right">
@@ -228,14 +292,32 @@ async function handleExport() {
           placeholder="关键词搜索"
           size="small"
           clearable
-          style="width: 200px;"
+          style="width: 180px;"
           @input="onKeywordChange"
           @clear="onKeywordChange"
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
 
-        <!-- 高级筛选（有激活条件时显示蓝色圆点） -->
+        <!-- 批次选择器（有批次才显示） -->
+        <el-select
+          v-if="store.batchIds.length > 0"
+          :model-value="store.currentBatchId"
+          size="small"
+          style="width: 175px;"
+          @change="onBatchChange"
+        >
+          <el-option label="全部数据" value="" />
+          <el-option label="最新批次" value="latest" />
+          <el-option
+            v-for="bid in store.batchIds"
+            :key="bid"
+            :label="bid"
+            :value="bid"
+          />
+        </el-select>
+
+        <!-- 高级筛选 -->
         <el-badge :is-dot="hasActiveFilter">
           <el-button size="small" icon="Filter" @click="filterVisible = true">高级筛选</el-button>
         </el-badge>
@@ -244,7 +326,7 @@ async function handleExport() {
 
         <!-- 导入/导出下拉 -->
         <el-dropdown trigger="click">
-          <el-button size="small" icon="Document">
+          <el-button size="small" icon="Document" :loading="previewing || templateDownloading">
             模板/导入/导出 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
@@ -319,7 +401,15 @@ async function handleExport() {
           <vxe-column title="操作" width="120" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+              <el-button
+                link
+                type="danger"
+                size="small"
+                :loading="deletingId === Number(row['Id'])"
+                @click="handleDelete(row)"
+              >
+                删除
+              </el-button>
             </template>
           </vxe-column>
         </vxe-table>
@@ -346,6 +436,7 @@ async function handleExport() {
       v-model:visible="formVisible"
       :fields="sortedFields"
       :row="editingRow"
+      :submitting="formSubmitting"
       @submit="handleFormSubmit"
     />
 
@@ -359,6 +450,16 @@ async function handleExport() {
       @save-scheme="onSaveScheme"
       @delete-scheme="onDeleteScheme"
       @load-scheme="store.applyScheme($event)"
+    />
+
+    <!-- ── 导入预览对话框 ── -->
+    <ImportPreviewDialog
+      v-model:visible="previewVisible"
+      :rows="previewRows"
+      :batch-id="previewBatchId"
+      :fields="sortedFields"
+      :confirming="confirming"
+      @confirm="handleConfirmImport"
     />
 
     <!-- ── 导出列选择对话框 ── -->
@@ -383,7 +484,7 @@ async function handleExport() {
 
 <style scoped>
 .module-page {
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: #f0f2f5;
@@ -406,18 +507,21 @@ async function handleExport() {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .header-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: nowrap;
 }
 
 .page-title {
   font-size: 15px;
   font-weight: 600;
   color: #303133;
+  white-space: nowrap;
 }
 
 .no-template {

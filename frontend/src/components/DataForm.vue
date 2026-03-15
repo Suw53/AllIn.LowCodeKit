@@ -10,6 +10,8 @@ const props = defineProps<{
   fields: FormField[]
   /** 编辑模式传入已有行，新增模式不传 */
   row?: DataRow
+  /** 提交中 loading 状态 */
+  submitting?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -116,7 +118,7 @@ function handleClose() {
 
     <template #footer>
       <el-button @click="handleClose">取消</el-button>
-      <el-button type="primary" @click="handleSubmit">确定</el-button>
+      <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
     </template>
   </el-dialog>
 </template>

@@ -95,18 +95,14 @@ async function handleDeleteScheme(id: number) {
 }
 
 function handleLoadScheme(scheme: FilterScheme) {
-  // 解析方案条件加载到编辑区，同时立即应用
+  // 只将方案条件加载到编辑区，用户可继续调整后再点"应用筛选"
   try {
     localFilters.value = JSON.parse(scheme.config) as FilterCondition[]
   } catch {
     localFilters.value = []
   }
-  // 立即触发应用，让用户看到筛选结果生效
-  const valid = localFilters.value.filter(f => f.field && f.value)
-  emit('update:modelValue', valid)
   emit('load-scheme', scheme)
-  emit('apply')
-  emit('update:visible', false)
+  // 不自动关闭抽屉，不自动应用，让用户手动点击"应用筛选"
 }
 </script>
 

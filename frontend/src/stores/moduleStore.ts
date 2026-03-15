@@ -1,7 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { queryData, createRow, updateRow, deleteRow, downloadTemplate, exportExcel, importData } from '@/api/data'
+import {
+  queryData, createRow, updateRow, deleteRow,
+  downloadTemplate, exportExcel, getBatchIds, confirmImport
+} from '@/api/data'
 import { getFilterSchemes, createFilterScheme, deleteFilterScheme } from '@/api/filterScheme'
 import { getExportPreference, saveExportPreference } from '@/api/exportPreference'
 import type { DataRow, FilterCondition, FilterScheme } from '@/types'
@@ -15,6 +18,10 @@ export const useModuleStore = defineStore('module', () => {
   const pageSize = ref(100)
   const keyword = ref('')
   const activeFilters = ref<FilterCondition[]>([])
+
+  // ────────── 批次号 ──────────
+  const batchIds = ref<string[]>([])
+  const currentBatchId = ref<string>('latest') // 默认显示最新批次
 
   // ────────── 筛选方案状态 ──────────
   const filterSchemes = ref<FilterScheme[]>([])
@@ -33,7 +40,8 @@ export const useModuleStore = defineStore('module', () => {
         page: page.value,
         pageSize: pageSize.value,
         keyword: keyword.value || undefined,
-        filters: activeFilters.value.length ? activeFilters.value : undefined
+        filters: activeFilters.value.length ? activeFilters.value : undefined,
+        batchId: currentBatchId.value || undefined
       })
       rows.value = result.items
       total.value = result.total
@@ -41,6 +49,19 @@ export const useModuleStore = defineStore('module', () => {
       ElMessage.error(e instanceof Error ? e.message : '加载数据失败')
     } finally {
       loading.value = false
+    }
+  }
+
+  /** 加载批次号列表并设置默认批次 */
+  async function fetchBatchIds(menuId: number) {
+    try {
+      const ids = await getBatchIds(menuId)
+      batchIds.value = ids
+      // 若有批次，默认选择最新批次（"latest"语义）；若无批次，显示全部
+      currentBatchId.value = ids.length > 0 ? 'latest' : ''
+    } catch {
+      batchIds.value = []
+      currentBatchId.value = ''
     }
   }
 
@@ -80,7 +101,7 @@ export const useModuleStore = defineStore('module', () => {
     filterSchemes.value = filterSchemes.value.filter(s => s.id !== id)
   }
 
-  /** 应用某个筛选方案 */
+  /** 应用某个筛选方案（只更新 activeFilters，不触发查询） */
   function applyScheme(scheme: FilterScheme) {
     try {
       activeFilters.value = JSON.parse(scheme.config) as FilterCondition[]
@@ -119,13 +140,17 @@ export const useModuleStore = defineStore('module', () => {
     await exportExcel(menuId, {
       keyword: keyword.value || undefined,
       filters: activeFilters.value.length ? activeFilters.value : undefined,
-      columns
+      columns,
+      batchId: currentBatchId.value || undefined
     })
   }
 
-  /** 从 Excel 批量导入数据 */
-  async function importFromExcel(menuId: number, file: File) {
-    const result = await importData(menuId, file)
+  /** 确认导入（保存预览中有效的行） */
+  async function importConfirm(menuId: number, batchId: string, validRows: Record<string, string | null>[]) {
+    const result = await confirmImport(menuId, batchId, validRows)
+    // 刷新批次列表并切换到新批次
+    await fetchBatchIds(menuId)
+    currentBatchId.value = batchId
     await fetchData(menuId)
     return result
   }
@@ -139,16 +164,20 @@ export const useModuleStore = defineStore('module', () => {
     activeFilters.value = []
     filterSchemes.value = []
     exportColumns.value = []
+    batchIds.value = []
+    currentBatchId.value = 'latest'
     currentMenuId.value = null
   }
 
   return {
     rows, total, loading, page, pageSize, keyword, activeFilters,
     filterSchemes, exportColumns, currentMenuId,
+    batchIds, currentBatchId,
     fetchData, addRow, editRow, removeRow,
+    fetchBatchIds,
     fetchFilterSchemes, saveFilterScheme, removeFilterScheme, applyScheme,
     fetchExportPreference, saveExportColumns,
-    fetchTemplate, exportToExcel, importFromExcel,
+    fetchTemplate, exportToExcel, importConfirm,
     reset
   }
 })

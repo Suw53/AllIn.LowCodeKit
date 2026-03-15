@@ -6,6 +6,20 @@ export interface DataQueryParams {
   pageSize?: number
   keyword?: string
   filters?: FilterCondition[]
+  batchId?: string
+}
+
+export interface PreviewRow {
+  rowIndex: number
+  data: Record<string, string | null>
+  status: 'ok' | 'error'
+  errors: string[]
+}
+
+export interface ImportPreviewResult {
+  rows: PreviewRow[]
+  successCount: number
+  errorCount: number
 }
 
 /**
@@ -13,16 +27,51 @@ export interface DataQueryParams {
  * GET /api/menus/{menuId}/data
  */
 export const queryData = (menuId: number, params: DataQueryParams = {}) => {
-  const { page = 1, pageSize = 100, keyword, filters } = params
+  const { page = 1, pageSize = 100, keyword, filters, batchId } = params
   return http.get<PageResult<DataRow>>(`/api/menus/${menuId}/data`, {
     params: {
       page,
       pageSize,
       keyword: keyword || undefined,
-      filters: filters?.length ? JSON.stringify(filters) : undefined
+      filters: filters?.length ? JSON.stringify(filters) : undefined,
+      batchId: batchId || undefined
     }
   })
 }
+
+/**
+ * 获取批次号列表（倒序）
+ * GET /api/menus/{menuId}/data/batches
+ */
+export const getBatchIds = (menuId: number) =>
+  http.get<string[]>(`/api/menus/${menuId}/data/batches`)
+
+/**
+ * 预览导入数据（解析+校验，不保存）
+ * POST /api/menus/{menuId}/data/import/preview
+ */
+export const previewImport = (menuId: number, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return http.post<ImportPreviewResult>(
+    `/api/menus/${menuId}/data/import/preview`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+}
+
+/**
+ * 确认导入（保存有效行）
+ * POST /api/menus/{menuId}/data/import/confirm
+ */
+export const confirmImport = (
+  menuId: number,
+  batchId: string,
+  rows: Record<string, string | null>[]
+) => http.post<{ imported: number; batchId: string }>(
+  `/api/menus/${menuId}/data/import/confirm`,
+  { batchId, rows }
+)
 
 /**
  * 新增一条数据记录
@@ -58,24 +107,11 @@ export const downloadTemplate = (menuId: number) =>
  */
 export const exportExcel = (
   menuId: number,
-  params: { keyword?: string; filters?: FilterCondition[]; columns?: string[] }
+  params: { keyword?: string; filters?: FilterCondition[]; columns?: string[]; batchId?: string }
 ) =>
   downloadFile(`/api/menus/${menuId}/data/export`, {
     keyword: params.keyword || undefined,
     filters: params.filters?.length ? JSON.stringify(params.filters) : undefined,
-    columns: params.columns?.length ? JSON.stringify(params.columns) : undefined
+    columns: params.columns?.length ? JSON.stringify(params.columns) : undefined,
+    batchId: params.batchId || undefined
   }, '导出数据.xlsx')
-
-/**
- * 从 Excel 文件批量导入数据
- * POST /api/menus/{menuId}/data/import
- */
-export const importData = (menuId: number, file: File) => {
-  const form = new FormData()
-  form.append('file', file)
-  return http.post<{ imported: number; errors: string[] }>(
-    `/api/menus/${menuId}/data/import`,
-    form,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
-  )
-}
