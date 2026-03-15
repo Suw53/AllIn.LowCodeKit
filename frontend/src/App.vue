@@ -24,9 +24,13 @@ function handleGlobalConfig() {
 <template>
   <el-container style="height: 100vh;">
     <!-- 左侧菜单 -->
-    <el-aside width="220px" style="background:#001529; overflow:hidden;">
+    <el-aside width="220px" style="background:#001529; overflow:hidden; flex-shrink:0;">
       <div class="logo">AllIn LowCode Kit</div>
+      <div v-if="menuStore.loading" class="menu-loading">
+        <el-skeleton :rows="4" animated style="padding: 16px;" />
+      </div>
       <el-menu
+        v-else
         background-color="#001529"
         text-color="#c0c4cc"
         active-text-color="#ffffff"
@@ -56,7 +60,7 @@ function handleGlobalConfig() {
     </el-aside>
 
     <!-- 右侧内容区 -->
-    <el-main style="padding:0; background:#f0f2f5;">
+    <el-main style="padding:0; background:#f0f2f5; overflow:hidden;">
       <router-view />
     </el-main>
   </el-container>
@@ -75,5 +79,9 @@ function handleGlobalConfig() {
   white-space: nowrap;
   text-overflow: ellipsis;
   padding: 0 8px;
+}
+
+.menu-loading {
+  padding: 8px;
 }
 </style>
