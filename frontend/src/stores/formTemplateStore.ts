@@ -3,8 +3,7 @@ import { ref } from 'vue'
 import type { FormTemplate, FormField } from '@/types'
 import {
   getTemplateByMenu,
-  createTemplate,
-  saveTemplate,
+  saveTemplateForMenu,
   exportTemplate,
   importTemplate,
   type SaveTemplateDto
@@ -79,19 +78,8 @@ export const useFormTemplateStore = defineStore('formTemplate', () => {
     }
   }
 
-  /** 创建空白模板 */
-  async function initTemplate(menuId: number, name: string) {
-    saving.value = true
-    try {
-      template.value = await createTemplate(menuId, name)
-    } finally {
-      saving.value = false
-    }
-  }
-
-  /** 全量保存（替换字段） */
-  async function save(fields: FormField[], codeLogic: string, name: string) {
-    if (!template.value) return
+  /** 全量保存（upsert：不存在则创建，存在则更新） */
+  async function save(menuId: number, name: string, fields: FormField[], codeLogic: string) {
     saving.value = true
     try {
       const dto: SaveTemplateDto = {
@@ -107,7 +95,7 @@ export const useFormTemplateStore = defineStore('formTemplate', () => {
           columnOrder: f.columnOrder
         }))
       }
-      template.value = await saveTemplate(template.value.id, dto)
+      template.value = await saveTemplateForMenu(menuId, dto)
     } finally {
       saving.value = false
     }
@@ -147,5 +135,5 @@ export const useFormTemplateStore = defineStore('formTemplate', () => {
     template.value = null
   }
 
-  return { template, loading, saving, loadByMenu, initTemplate, save, doExport, doImport, reset }
+  return { template, loading, saving, loadByMenu, save, doExport, doImport, reset }
 })

@@ -23,22 +23,25 @@ watch(() => props.modelValue, (v) => {
   if (!expanded.value) local.value = { ...v }
 }, { deep: true })
 
-// ────────── 下拉选项：字符串 ↔ JSON 数组互转 ──────────
-/** 将 JSON 选项字符串转为逗号分隔文本（供文本框展示） */
-const optionsText = computed({
-  get() {
-    try {
-      const arr = JSON.parse(local.value.options ?? '[]') as string[]
-      return arr.join(', ')
-    } catch {
-      return local.value.options ?? ''
-    }
-  },
-  set(val: string) {
-    const arr = val.split(',').map(s => s.trim()).filter(Boolean)
-    local.value.options = JSON.stringify(arr)
+// ────────── 下拉选项：用独立 ref 存文本，blur 时才转 JSON ──────────
+/** 文本形式的选项（供输入框直接绑定，避免实时转 JSON 导致逗号被吞） */
+const optionsInput = ref('')
+
+/** 当字段类型变化或属性面板展开时，同步 JSON → 文本 */
+watch(() => local.value.options, (jsonStr) => {
+  try {
+    const arr = JSON.parse(jsonStr ?? '[]') as string[]
+    optionsInput.value = arr.join(', ')
+  } catch {
+    optionsInput.value = jsonStr ?? ''
   }
-})
+}, { immediate: true })
+
+/** 失焦时将文本转回 JSON 存入 local */
+function onOptionsBlur() {
+  const arr = optionsInput.value.split(',').map(s => s.trim()).filter(Boolean)
+  local.value.options = JSON.stringify(arr)
+}
 
 // ────────── 展开 / 折叠 ──────────
 function toggleExpand() {
@@ -149,11 +152,15 @@ defineExpose({ openForEdit })
           />
         </div>
         <div v-if="local.fieldType === 'Select'" class="form-item full-width">
-          <label class="form-label">下拉选项 <span class="hint">（逗号分隔，如：选项A, 选项B）</span></label>
+          <label class="form-label">
+            下拉选项
+            <span class="hint">（用英文逗号 <code>,</code> 分隔，如：选项A, 选项B）</span>
+          </label>
           <el-input
-            v-model="optionsText"
+            v-model="optionsInput"
             placeholder="选项A, 选项B, 选项C"
             size="small"
+            @blur="onOptionsBlur"
           />
         </div>
         <div class="form-item full-width">

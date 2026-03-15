@@ -36,7 +36,7 @@ const templateName = ref('')
 /** 当前编辑的字段列表（本地副本，避免直接改 store） */
 const fields = ref<FormField[]>([])
 /** 代码编辑器的内容（本地编辑态） */
-const codeLogic = ref('')
+const codeLogic = ref(buildDefaultCode())
 /** 当前激活的 Tab */
 const activeTab = ref<'visual' | 'code'>('visual')
 /** 用于自动展开新添加字段的 ref map */
@@ -141,21 +141,13 @@ async function save() {
       return
     }
   }
-  // 同步 code 中的 AUTO 区块（确保保存的代码是最新的）
   const latestCode = syncRequiredToCode(codeLogic.value, fields.value)
-
-  // 快照：async 等待期间 watcher 可能重置 fields，提前捕获
   const fieldsSnapshot = fields.value.map(f => ({ ...f }))
   const nameSnapshot = templateName.value.trim()
 
   try {
-    if (!store.template) {
-      // 首次保存：先创建空模板，再写入字段
-      await store.initTemplate(menuId.value, nameSnapshot)
-      await store.save(fieldsSnapshot, latestCode, nameSnapshot)
-    } else {
-      await store.save(fieldsSnapshot, latestCode, nameSnapshot)
-    }
+    // upsert：单次请求，后端自动处理创建或更新
+    await store.save(menuId.value, nameSnapshot, fieldsSnapshot, latestCode)
     codeLogic.value = latestCode
     ElMessage.success('保存成功')
   } catch (e: unknown) {

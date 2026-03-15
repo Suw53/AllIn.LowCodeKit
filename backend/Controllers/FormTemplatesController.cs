@@ -90,6 +90,52 @@ public class FormTemplatesController : ControllerBase
     }
 
     /// <summary>
+    /// 保存表单模板（upsert：不存在则创建，存在则更新）
+    /// 前端统一调用此接口，避免两步 create+update 的竞态问题
+    /// </summary>
+    [HttpPost("save/{menuId:int}")]
+    public async Task<IActionResult> SaveForMenu(int menuId, [FromBody] SaveTemplateRequest req)
+    {
+        var template = await _db.FormTemplates
+            .Include(t => t.Fields)
+            .FirstOrDefaultAsync(t => t.MenuId == menuId);
+
+        if (template == null)
+        {
+            // 不存在则新建
+            template = new FormTemplate { MenuId = menuId };
+            _db.FormTemplates.Add(template);
+        }
+        else
+        {
+            // 存在则清空旧字段
+            _db.FormFields.RemoveRange(template.Fields);
+        }
+
+        template.Name = req.Name;
+        template.CodeLogic = req.CodeLogic;
+        template.UpdatedAt = DateTime.Now;
+        template.Fields = req.Fields.Select((f, i) => new FormField
+        {
+            FieldName = f.FieldName,
+            Label = f.Label,
+            FieldType = f.FieldType,
+            Options = f.Options,
+            IsRequired = f.IsRequired,
+            Remark = f.Remark,
+            ColumnOrder = f.ColumnOrder,
+            Sort = i
+        }).ToList();
+
+        await _db.SaveChangesAsync();
+
+        var result = await _db.FormTemplates
+            .Include(t => t.Fields.OrderBy(f => f.Sort))
+            .FirstAsync(t => t.MenuId == menuId);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// 导出表单模板为JSON（含字段列表）
     /// </summary>
     [HttpGet("{id:int}/export")]

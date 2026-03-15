@@ -194,7 +194,12 @@ async function doDelete(menu: MenuItem) {
 
 // ────────── 导航 ──────────
 function navigate(menu: MenuItem) {
-  router.push(menu.isSystem ? '/global-config' : `/module/${menu.id}`)
+  if (menu.isSystem) {
+    router.push('/global-config')
+  } else {
+    // TODO Phase 4 完成后改为 /module/:menuId；当前直接进表单设计器便于测试
+    router.push(`/form-designer/${menu.id}`)
+  }
 }
 </script>
 

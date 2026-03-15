@@ -19,6 +19,10 @@ export interface SaveTemplateDto {
   fields: FieldDto[]
 }
 
+/** 保存模板（upsert：不存在则创建，存在则更新），前端统一调用此接口 */
+export const saveTemplateForMenu = (menuId: number, dto: SaveTemplateDto) =>
+  http.post<FormTemplate>(`/api/form-templates/save/${menuId}`, dto)
+
 /** 根据菜单Id查询模板（含字段，未创建时返回 null） */
 export const getTemplateByMenu = (menuId: number) =>
   http.get<FormTemplate | null>(`/api/form-templates/by-menu/${menuId}`)

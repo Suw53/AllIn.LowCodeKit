@@ -1,10 +1,17 @@
 using AllIn.LowCodeKit.Backend.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 添加控制器
-builder.Services.AddControllers();
+// 添加控制器，配置 JSON 序列化：驼峰命名 + 忽略循环引用
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
 // 配置SQLite数据库
 var dbPath = Path.Combine(
