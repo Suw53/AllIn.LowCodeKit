@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "后端 (.NET)",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/backend/AllIn.LowCodeKit.Backend.csproj",
+      "preLaunchTask": "启动前端"
+    },
+    {
+      "name": "前端 (Edge)",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:1420",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "preLaunchTask": "启动前端"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "🚀 全部启动",
+      "configurations": ["后端 (.NET)", "前端 (Edge)"],
+      "preLaunchTask": "启动后端",
+      "stopAll": true
+    }
+  ]
+}

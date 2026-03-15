@@ -1,0 +1,70 @@
+# ===== .NET / C# =====
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.vspscc
+*.vssscc
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.nupkg
+*.snupkg
+*.zip
+project.lock.json
+project.fragment.lock.json
+artifacts/
+**/Properties/launchSettings.json
+
+# ===== Vue / Node =====
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.cache/
+
+# ===== Tauri =====
+src-tauri/target/
+src-tauri/WixTools/
+*.AppImage
+*.deb
+*.rpm
+*.dmg
+*.pkg
+*.exe
+*.msi
+
+# ===== SQLite =====
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ===== IDE =====
+.idea/
+*.swp
+*.swo
