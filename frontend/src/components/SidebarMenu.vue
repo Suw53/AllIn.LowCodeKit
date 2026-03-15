@@ -108,6 +108,7 @@ function handleDocContextMenu(e: MouseEvent) {
   } else {
     if (result.menu.isSystem) return
     showCtxMenu(e, [
+      { label: '表单设计', icon: 'Setting', handler: () => router.push(`/form-designer/${result.menu.id}`) },
       { label: '重命名', icon: 'Edit', handler: () => openDialog('rename', result.menu) },
       { label: '删除', icon: 'Delete', danger: true, handler: () => doDelete(result.menu) },
     ])

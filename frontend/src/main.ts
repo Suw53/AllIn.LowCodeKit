@@ -1,3 +1,5 @@
+// Monaco Editor worker 环境必须最先加载
+import '@/utils/monaco-env'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
