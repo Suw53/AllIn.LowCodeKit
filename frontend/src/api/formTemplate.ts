@@ -13,37 +13,37 @@ export interface FieldDto {
   span: number
 }
 
-/** 全量保存模板请求体 */
+/** 创建或全量更新模板请求体（upsert / 导入通用） */
 export interface SaveTemplateDto {
   name: string
   codeLogic?: string
   fields: FieldDto[]
 }
 
-/** 保存模板（upsert：不存在则创建，存在则更新），前端统一调用此接口 */
-export const saveTemplateForMenu = (menuId: number, dto: SaveTemplateDto) =>
-  http.post<FormTemplate>(`/api/form-templates/save/${menuId}`, dto)
-
-/** 根据菜单Id查询模板（含字段，未创建时返回 null） */
+/**
+ * 获取指定菜单的表单模板（含字段），不存在返回 null
+ * GET /api/menus/{menuId}/form-template
+ */
 export const getTemplateByMenu = (menuId: number) =>
-  http.get<FormTemplate | null>(`/api/form-templates/by-menu/${menuId}`)
+  http.get<FormTemplate | null>(`/api/menus/${menuId}/form-template`)
 
-/** 创建新模板 */
-export const createTemplate = (menuId: number, name: string) =>
-  http.post<FormTemplate>('/api/form-templates', { menuId, name })
+/**
+ * 创建或全量更新表单模板（upsert）
+ * PUT /api/menus/{menuId}/form-template
+ */
+export const saveTemplateForMenu = (menuId: number, dto: SaveTemplateDto) =>
+  http.put<FormTemplate>(`/api/menus/${menuId}/form-template`, dto)
 
-/** 全量保存模板（替换所有字段） */
-export const saveTemplate = (id: number, dto: SaveTemplateDto) =>
-  http.put<FormTemplate>(`/api/form-templates/${id}`, dto)
+/**
+ * 获取模板完整数据（用于导出下载 JSON）
+ * GET /api/form-templates/{id}
+ */
+export const getTemplateById = (id: number) =>
+  http.get<FormTemplate>(`/api/form-templates/${id}`)
 
-/** 导出模板数据 */
-export const exportTemplate = (id: number) =>
-  http.get<FormTemplate>(`/api/form-templates/${id}/export`)
-
-/** 导入模板（覆盖该菜单现有模板） */
-export const importTemplate = (menuId: number, dto: SaveTemplateDto & { name: string }) =>
-  http.post<FormTemplate>(`/api/form-templates/import/${menuId}`, dto)
-
-/** 删除模板 */
+/**
+ * 删除表单模板
+ * DELETE /api/form-templates/{id}
+ */
 export const deleteTemplate = (id: number) =>
   http.delete(`/api/form-templates/${id}`)

@@ -15,7 +15,7 @@ namespace AllIn.LowCodeKit.Backend.Migrations
                 table: "FormFields",
                 type: "INTEGER",
                 nullable: false,
-                defaultValue: 1);
+                defaultValue: 0);
         }
 
         /// <inheritdoc />

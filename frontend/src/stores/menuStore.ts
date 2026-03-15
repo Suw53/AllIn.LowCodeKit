@@ -31,18 +31,18 @@ export const useMenuStore = defineStore('menu', () => {
 
   /** 新增一级菜单 */
   async function addLevel1(name: string, icon?: string) {
-    await menuApi.addLevel1Menu({ name, icon })
+    await menuApi.addMenu({ name, icon, parentId: null })
     await fetchMenus()
   }
 
   /** 新增二级菜单，返回后端新建的菜单对象 */
   async function addLevel2(parentId: number, name: string, icon?: string): Promise<MenuItem> {
-    const result = await menuApi.addLevel2Menu({ name, icon, parentId }) as MenuItem
+    const result = await menuApi.addMenu({ name, icon, parentId }) as MenuItem
     await fetchMenus()
     return result
   }
 
-  /** 修改菜单名称 */
+  /** 修改菜单名称/图标 */
   async function updateMenu(id: number, name: string, icon?: string) {
     await menuApi.updateMenu(id, { name, icon })
     await fetchMenus()

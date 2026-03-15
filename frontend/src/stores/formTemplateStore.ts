@@ -4,8 +4,7 @@ import type { FormTemplate, FormField } from '@/types'
 import {
   getTemplateByMenu,
   saveTemplateForMenu,
-  exportTemplate,
-  importTemplate,
+  getTemplateById,
   type SaveTemplateDto
 } from '@/api/formTemplate'
 
@@ -105,14 +104,14 @@ export const useFormTemplateStore = defineStore('formTemplate', () => {
   /** 导出模板 JSON */
   async function doExport(): Promise<FormTemplate | null> {
     if (!template.value) return null
-    return exportTemplate(template.value.id)
+    return getTemplateById(template.value.id)
   }
 
-  /** 导入模板（覆盖） */
+  /** 导入模板（upsert 覆盖，与保存接口一致） */
   async function doImport(menuId: number, data: FormTemplate) {
     saving.value = true
     try {
-      const dto: SaveTemplateDto & { name: string } = {
+      const dto: SaveTemplateDto = {
         name: data.name,
         codeLogic: data.codeLogic,
         fields: (data.fields ?? []).map(f => ({
@@ -122,10 +121,11 @@ export const useFormTemplateStore = defineStore('formTemplate', () => {
           options: f.options,
           isRequired: f.isRequired,
           remark: f.remark,
-          columnOrder: f.columnOrder
+          columnOrder: f.columnOrder,
+          span: f.span ?? 1
         }))
       }
-      template.value = await importTemplate(menuId, dto)
+      template.value = await saveTemplateForMenu(menuId, dto)
     } finally {
       saving.value = false
     }

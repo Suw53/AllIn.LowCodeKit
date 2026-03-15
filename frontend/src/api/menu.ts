@@ -3,22 +3,18 @@ import http from './http'
 export interface MenuPayload {
   name: string
   icon?: string
-  parentId?: number
+  parentId?: number | null
 }
 
 /** 获取完整菜单树 */
 export const getMenuTree = () =>
-  http.get('/api/menus/tree')
+  http.get('/api/menus')
 
-/** 新增一级菜单 */
-export const addLevel1Menu = (payload: MenuPayload) =>
-  http.post('/api/menus/level1', payload)
+/** 新增菜单：parentId 为 null/undefined 时创建一级菜单，否则创建二级菜单 */
+export const addMenu = (payload: MenuPayload) =>
+  http.post('/api/menus', payload)
 
-/** 新增二级菜单 */
-export const addLevel2Menu = (payload: MenuPayload) =>
-  http.post('/api/menus/level2', payload)
-
-/** 修改菜单名称 */
+/** 修改菜单名称/图标 */
 export const updateMenu = (id: number, payload: MenuPayload) =>
   http.put(`/api/menus/${id}`, payload)
 

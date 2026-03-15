@@ -6,10 +6,14 @@ using Microsoft.EntityFrameworkCore;
 namespace AllIn.LowCodeKit.Backend.Controllers;
 
 /// <summary>
-/// 表单模板管理接口：创建、查询、保存、导入导出
+/// 表单模板管理接口
+/// 资源路由：
+///   GET    /api/menus/{menuId}/form-template   → 获取菜单的表单模板
+///   PUT    /api/menus/{menuId}/form-template   → 创建或全量更新（upsert）
+///   GET    /api/form-templates/{id}            → 按模板Id获取（供前端导出下载）
+///   DELETE /api/form-templates/{id}            → 删除模板
 /// </summary>
 [ApiController]
-[Route("api/form-templates")]
 public class FormTemplatesController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -17,9 +21,10 @@ public class FormTemplatesController : ControllerBase
     public FormTemplatesController(AppDbContext db) => _db = db;
 
     /// <summary>
-    /// 根据菜单Id获取表单模板（含字段列表，按Sort排序）
+    /// 获取指定菜单的表单模板（含字段，按 Sort 排序），不存在返回 null
+    /// GET /api/menus/{menuId}/form-template
     /// </summary>
-    [HttpGet("by-menu/{menuId:int}")]
+    [HttpGet("api/menus/{menuId:int}/form-template")]
     public async Task<IActionResult> GetByMenu(int menuId)
     {
         var template = await _db.FormTemplates
@@ -29,73 +34,12 @@ public class FormTemplatesController : ControllerBase
     }
 
     /// <summary>
-    /// 创建新表单模板（空字段，后续通过 PUT 保存字段）
+    /// 创建或全量更新表单模板（upsert）：不存在则创建，存在则全量替换字段
+    /// 同时作为导入接口：前端解析 JSON 后直接 PUT 即可
+    /// PUT /api/menus/{menuId}/form-template
     /// </summary>
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] CreateTemplateRequest req)
-    {
-        // 同一 MenuId 只允许一个模板
-        var existing = await _db.FormTemplates.FirstOrDefaultAsync(t => t.MenuId == req.MenuId);
-        if (existing != null)
-            return BadRequest(new { message = "该菜单已存在表单模板" });
-
-        var template = new FormTemplate
-        {
-            MenuId = req.MenuId,
-            Name = req.Name,
-            CodeLogic = req.CodeLogic ?? string.Empty
-        };
-        _db.FormTemplates.Add(template);
-        await _db.SaveChangesAsync();
-        return Ok(template);
-    }
-
-    /// <summary>
-    /// 全量保存表单模板（模板信息 + 替换全部字段）
-    /// </summary>
-    [HttpPut("{id:int}")]
-    public async Task<IActionResult> SaveFull(int id, [FromBody] SaveTemplateRequest req)
-    {
-        var template = await _db.FormTemplates
-            .Include(t => t.Fields)
-            .FirstOrDefaultAsync(t => t.Id == id);
-        if (template == null) return NotFound(new { message = "模板不存在" });
-
-        template.Name = req.Name;
-        template.CodeLogic = req.CodeLogic;
-        template.UpdatedAt = DateTime.Now;
-
-        // 全量替换字段（删除旧字段，写入新字段）
-        _db.FormFields.RemoveRange(template.Fields);
-        template.Fields = req.Fields.Select((f, i) => new FormField
-        {
-            TemplateId = id,
-            FieldName = f.FieldName,
-            Label = f.Label,
-            FieldType = f.FieldType,
-            Options = f.Options,
-            IsRequired = f.IsRequired,
-            Remark = f.Remark,
-            ColumnOrder = f.ColumnOrder,
-            Span = f.Span,
-            Sort = i
-        }).ToList();
-
-        await _db.SaveChangesAsync();
-
-        // 重新查询，返回含 Id 的完整数据
-        var result = await _db.FormTemplates
-            .Include(t => t.Fields.OrderBy(f => f.Sort))
-            .FirstAsync(t => t.Id == id);
-        return Ok(result);
-    }
-
-    /// <summary>
-    /// 保存表单模板（upsert：不存在则创建，存在则更新）
-    /// 前端统一调用此接口，避免两步 create+update 的竞态问题
-    /// </summary>
-    [HttpPost("save/{menuId:int}")]
-    public async Task<IActionResult> SaveForMenu(int menuId, [FromBody] SaveTemplateRequest req)
+    [HttpPut("api/menus/{menuId:int}/form-template")]
+    public async Task<IActionResult> Upsert(int menuId, [FromBody] SaveTemplateRequest req)
     {
         var template = await _db.FormTemplates
             .Include(t => t.Fields)
@@ -103,13 +47,11 @@ public class FormTemplatesController : ControllerBase
 
         if (template == null)
         {
-            // 不存在则新建
             template = new FormTemplate { MenuId = menuId };
             _db.FormTemplates.Add(template);
         }
         else
         {
-            // 存在则清空旧字段
             _db.FormFields.RemoveRange(template.Fields);
         }
 
@@ -138,10 +80,11 @@ public class FormTemplatesController : ControllerBase
     }
 
     /// <summary>
-    /// 导出表单模板为JSON（含字段列表）
+    /// 按模板 Id 获取完整模板数据（前端用于导出下载 JSON）
+    /// GET /api/form-templates/{id}
     /// </summary>
-    [HttpGet("{id:int}/export")]
-    public async Task<IActionResult> Export(int id)
+    [HttpGet("api/form-templates/{id:int}")]
+    public async Task<IActionResult> GetById(int id)
     {
         var template = await _db.FormTemplates
             .Include(t => t.Fields.OrderBy(f => f.Sort))
@@ -151,52 +94,10 @@ public class FormTemplatesController : ControllerBase
     }
 
     /// <summary>
-    /// 导入表单模板（覆盖指定菜单的现有模板）
-    /// </summary>
-    [HttpPost("import/{menuId:int}")]
-    public async Task<IActionResult> Import(int menuId, [FromBody] ImportTemplateRequest req)
-    {
-        // 删除已有模板
-        var existing = await _db.FormTemplates
-            .Include(t => t.Fields)
-            .FirstOrDefaultAsync(t => t.MenuId == menuId);
-        if (existing != null)
-        {
-            _db.FormFields.RemoveRange(existing.Fields);
-            _db.FormTemplates.Remove(existing);
-        }
-
-        var template = new FormTemplate
-        {
-            MenuId = menuId,
-            Name = req.Name,
-            CodeLogic = req.CodeLogic,
-            Fields = req.Fields.Select((f, i) => new FormField
-            {
-                FieldName = f.FieldName,
-                Label = f.Label,
-                FieldType = f.FieldType,
-                Options = f.Options,
-                IsRequired = f.IsRequired,
-                Remark = f.Remark,
-                ColumnOrder = f.ColumnOrder,
-                Span = f.Span,
-                Sort = i
-            }).ToList()
-        };
-        _db.FormTemplates.Add(template);
-        await _db.SaveChangesAsync();
-
-        var result = await _db.FormTemplates
-            .Include(t => t.Fields.OrderBy(f => f.Sort))
-            .FirstAsync(t => t.Id == template.Id);
-        return Ok(result);
-    }
-
-    /// <summary>
     /// 删除表单模板（级联删除字段）
+    /// DELETE /api/form-templates/{id}
     /// </summary>
-    [HttpDelete("{id:int}")]
+    [HttpDelete("api/form-templates/{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
         var template = await _db.FormTemplates
@@ -207,20 +108,14 @@ public class FormTemplatesController : ControllerBase
         _db.FormFields.RemoveRange(template.Fields);
         _db.FormTemplates.Remove(template);
         await _db.SaveChangesAsync();
-        return Ok();
+        return NoContent();
     }
 }
 
 // ────────── 请求 DTO ──────────
 
-/// <summary>创建模板请求</summary>
-public record CreateTemplateRequest(int MenuId, string Name, string? CodeLogic);
-
-/// <summary>全量保存模板请求</summary>
+/// <summary>创建或更新模板请求体</summary>
 public record SaveTemplateRequest(string Name, string? CodeLogic, List<FieldDto> Fields);
-
-/// <summary>导入模板请求</summary>
-public record ImportTemplateRequest(string Name, string? CodeLogic, List<FieldDto> Fields);
 
 /// <summary>字段数据传输对象</summary>
 public record FieldDto(

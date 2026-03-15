@@ -9,7 +9,7 @@ namespace AllIn.LowCodeKit.Backend.Controllers;
 /// 菜单管理接口
 /// </summary>
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/menus")]
 public class MenusController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -21,15 +21,15 @@ public class MenusController : ControllerBase
 
     /// <summary>
     /// 获取完整菜单树
+    /// GET /api/menus
     /// </summary>
-    [HttpGet("tree")]
+    [HttpGet]
     public async Task<IActionResult> GetTree()
     {
         var menus = await _db.Menus
             .OrderBy(m => m.Sort)
             .ToListAsync();
 
-        // 构建树形结构
         var roots = menus
             .Where(m => m.ParentId == null)
             .Select(m => BuildNode(m, menus))
@@ -39,36 +39,18 @@ public class MenusController : ControllerBase
     }
 
     /// <summary>
-    /// 新增一级菜单
+    /// 新增菜单：parentId 为 null 则创建一级菜单，否则创建二级菜单
+    /// POST /api/menus
     /// </summary>
-    [HttpPost("level1")]
-    public async Task<IActionResult> AddLevel1([FromBody] MenuCreateDto dto)
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] MenuCreateDto dto)
     {
-        var maxSort = await _db.Menus
-            .Where(m => m.ParentId == null)
-            .MaxAsync(m => (int?)m.Sort) ?? 0;
-
-        var menu = new Menu
+        if (dto.ParentId.HasValue)
         {
-            ParentId = null,
-            Name = dto.Name,
-            Icon = dto.Icon,
-            Sort = maxSort + 10,
-            IsSystem = false
-        };
-        _db.Menus.Add(menu);
-        await _db.SaveChangesAsync();
-        return Ok(menu);
-    }
-
-    /// <summary>
-    /// 新增二级菜单
-    /// </summary>
-    [HttpPost("level2")]
-    public async Task<IActionResult> AddLevel2([FromBody] MenuCreateDto dto)
-    {
-        if (dto.ParentId == null)
-            return BadRequest("必须指定父级菜单Id");
+            // 二级菜单：校验父菜单存在
+            var parent = await _db.Menus.FindAsync(dto.ParentId.Value);
+            if (parent == null) return NotFound(new { message = "父菜单不存在" });
+        }
 
         var maxSort = await _db.Menus
             .Where(m => m.ParentId == dto.ParentId)
@@ -88,14 +70,15 @@ public class MenusController : ControllerBase
     }
 
     /// <summary>
-    /// 修改菜单名称
+    /// 修改菜单名称/图标
+    /// PUT /api/menus/{id}
     /// </summary>
-    [HttpPut("{id}")]
+    [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] MenuCreateDto dto)
     {
         var menu = await _db.Menus.FindAsync(id);
         if (menu == null) return NotFound();
-        if (menu.IsSystem) return BadRequest("系统内置菜单不可修改");
+        if (menu.IsSystem) return BadRequest(new { message = "系统内置菜单不可修改" });
 
         menu.Name = dto.Name;
         menu.Icon = dto.Icon;
@@ -104,21 +87,21 @@ public class MenusController : ControllerBase
     }
 
     /// <summary>
-    /// 删除菜单（一级菜单会级联删除所有子菜单）
+    /// 删除菜单（一级菜单级联删除所有子菜单）
+    /// DELETE /api/menus/{id}
     /// </summary>
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
         var menu = await _db.Menus.FindAsync(id);
         if (menu == null) return NotFound();
-        if (menu.IsSystem) return BadRequest("系统内置菜单不可删除");
+        if (menu.IsSystem) return BadRequest(new { message = "系统内置菜单不可删除" });
 
-        // 递归删除子菜单
         var children = await _db.Menus.Where(m => m.ParentId == id).ToListAsync();
         _db.Menus.RemoveRange(children);
         _db.Menus.Remove(menu);
         await _db.SaveChangesAsync();
-        return Ok();
+        return NoContent();
     }
 
     /// <summary>
@@ -150,6 +133,7 @@ public class MenusController : ControllerBase
 /// </summary>
 public class MenuCreateDto
 {
+    /// <summary>父菜单Id，null 表示一级菜单</summary>
     public int? ParentId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Icon { get; set; }
