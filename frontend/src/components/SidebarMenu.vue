@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useMenuStore, type MenuItem } from '@/stores/menuStore'
 import ContextMenu from '@/components/ContextMenu.vue'
+import IconPicker from '@/components/IconPicker.vue'
 
 const router = useRouter()
 const menuStore = useMenuStore()
@@ -127,6 +128,7 @@ const dialog = ref({
   visible: false,
   title: '',
   inputValue: '',
+  iconValue: '',
   submitting: false,
   mode: 'add-level1' as DialogMode,
   target: null as MenuItem | null,
@@ -142,6 +144,7 @@ function openDialog(mode: DialogMode, menu: MenuItem | null) {
       : mode === 'add-level2' ? `在「${menu!.name}」下新增子菜单`
       : '重命名',
     inputValue: mode === 'rename' ? menu!.name : '',
+    iconValue: mode === 'rename' ? (menu!.icon ?? '') : '',
     submitting: false,
   }
 }
@@ -150,21 +153,22 @@ async function submitDialog() {
   const name = dialog.value.inputValue.trim()
   if (!name) { ElMessage.warning('请输入名称'); return }
 
+  const icon = dialog.value.iconValue || undefined
   dialog.value.submitting = true
   try {
     const { mode, target } = dialog.value
     if (mode === 'add-level1') {
-      await menuStore.addLevel1(name)
+      await menuStore.addLevel1(name, icon)
       ElMessage.success('创建成功')
     } else if (mode === 'add-level2') {
-      const newMenu = await menuStore.addLevel2(target!.id, name)
+      const newMenu = await menuStore.addLevel2(target!.id, name, icon)
       dialog.value.visible = false
       ElMessage.success('创建成功，请先完成表单设计')
       router.push(`/form-designer/${newMenu.id}`)
       return
     } else {
-      await menuStore.updateMenu(target!.id, name)
-      ElMessage.success('重命名成功')
+      await menuStore.updateMenu(target!.id, name, icon)
+      ElMessage.success('保存成功')
     }
     dialog.value.visible = false
   } catch (e: unknown) {
@@ -259,22 +263,31 @@ function navigate(menu: MenuItem) {
     @close="ctxMenu.visible = false"
   />
 
-  <!-- 新增 / 重命名对话框 -->
+  <!-- 新增 / 编辑对话框 -->
   <el-dialog
     v-model="dialog.visible"
     :title="dialog.title"
-    width="360px"
+    width="480px"
     draggable
     :close-on-click-modal="false"
   >
-    <el-input
-      v-model="dialog.inputValue"
-      placeholder="请输入名称"
-      maxlength="50"
-      show-word-limit
-      autofocus
-      @keyup.enter="submitDialog"
-    />
+    <div class="dialog-form">
+      <div class="form-row">
+        <span class="form-label">名称</span>
+        <el-input
+          v-model="dialog.inputValue"
+          placeholder="请输入菜单名称"
+          maxlength="50"
+          show-word-limit
+          autofocus
+          @keyup.enter="submitDialog"
+        />
+      </div>
+      <div class="form-row">
+        <span class="form-label">图标</span>
+        <IconPicker v-model="dialog.iconValue" />
+      </div>
+    </div>
     <template #footer>
       <el-button @click="dialog.visible = false">取消</el-button>
       <el-button type="primary" :loading="dialog.submitting" @click="submitDialog">确定</el-button>
@@ -328,5 +341,23 @@ function navigate(menu: MenuItem) {
 .collapse-btn:hover {
   background: #002140;
   color: #fff;
+}
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
 }
 </style>
