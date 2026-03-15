@@ -62,6 +62,9 @@ public class FormField
     /// <summary>在表单设计器中的排列顺序</summary>
     public int Sort { get; set; }
 
+    /// <summary>列宽占比：1=半宽（占一列），2=全宽（跨两列）</summary>
+    public int Span { get; set; } = 1;
+
     /// <summary>模板导航属性</summary>
     public FormTemplate? Template { get; set; }
 }

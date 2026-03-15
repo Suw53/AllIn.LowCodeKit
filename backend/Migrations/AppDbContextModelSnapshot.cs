@@ -127,6 +127,11 @@ namespace AllIn.LowCodeKit.Backend.Migrations
                     b.Property<int>("Sort")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("Span")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
                     b.Property<int>("TemplateId")
                         .HasColumnType("INTEGER");
 

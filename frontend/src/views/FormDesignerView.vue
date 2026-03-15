@@ -97,7 +97,8 @@ function cloneFieldType(original: { type: 'Text' | 'Select'; label: string }) {
     isRequired: false,
     remark: '',
     columnOrder: fields.value.length + 1,
-    sort: fields.value.length
+    sort: fields.value.length,
+    span: 1
   } as FormField
 }
 
@@ -353,17 +354,19 @@ const fieldTypePalette = [
               item-key="id"
               handle=".drag-handle"
               :animation="150"
-              class="field-list"
+              class="field-grid"
               @add="onFieldAdded"
             >
               <template #item="{ element, index }">
-                <FormFieldItem
-                  :ref="(el) => { fieldItemRefs[index] = el as InstanceType<typeof FormFieldItem> }"
-                  :model-value="element"
-                  :index="index"
-                  @update:model-value="updateField(index, $event)"
-                  @delete="deleteField(index)"
-                />
+                <div :class="['field-grid-cell', element.span === 2 ? 'span-full' : '']">
+                  <FormFieldItem
+                    :ref="(el) => { fieldItemRefs[index] = el as InstanceType<typeof FormFieldItem> }"
+                    :model-value="element"
+                    :index="index"
+                    @update:model-value="updateField(index, $event)"
+                    @delete="deleteField(index)"
+                  />
+                </div>
               </template>
             </draggable>
 
@@ -582,11 +585,21 @@ const fieldTypePalette = [
   height: 100%;
 }
 
-.field-list {
-  display: flex;
-  flex-direction: column;
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
   min-height: 40px;
+  /* SortableJS 拖拽时需要 position 上下文 */
+  position: relative;
+}
+
+.field-grid-cell {
+  /* 默认占一列 */
+}
+
+.field-grid-cell.span-full {
+  grid-column: 1 / -1;
 }
 
 .field-list-empty-drop {

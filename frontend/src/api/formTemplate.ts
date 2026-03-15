@@ -10,6 +10,7 @@ export interface FieldDto {
   isRequired: boolean
   remark?: string
   columnOrder: number
+  span: number
 }
 
 /** 全量保存模板请求体 */

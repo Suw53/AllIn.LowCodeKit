@@ -44,6 +44,8 @@ export interface FormField {
   remark?: string
   columnOrder: number
   sort: number
+  /** 列宽占比：1=半宽（占一列），2=全宽（跨两列），默认 1 */
+  span: number
 }
 
 /** 表单模板 */

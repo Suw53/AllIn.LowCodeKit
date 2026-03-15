@@ -85,6 +85,16 @@ defineExpose({ openForEdit })
         {{ modelValue.fieldType === 'Select' ? '下拉框' : '文本框' }}
       </el-tag>
 
+      <!-- 列宽标签 -->
+      <el-tag
+        v-if="modelValue.span === 2"
+        type="success"
+        size="small"
+        class="type-badge"
+      >
+        全宽
+      </el-tag>
+
       <!-- 标签名 + 字段名 tooltip -->
       <el-tooltip :content="`DB字段名：${modelValue.fieldName || '未设置'}`" placement="top" :show-after="500">
         <span class="field-label">
@@ -174,6 +184,13 @@ defineExpose({ openForEdit })
         <div class="form-item">
           <label class="form-label">必填</label>
           <el-switch v-model="local.isRequired" />
+        </div>
+        <div class="form-item">
+          <label class="form-label">列宽</label>
+          <el-radio-group v-model="local.span" size="small">
+            <el-radio-button :value="1">半宽</el-radio-button>
+            <el-radio-button :value="2">全宽</el-radio-button>
+          </el-radio-group>
         </div>
       </div>
       <div class="form-actions">

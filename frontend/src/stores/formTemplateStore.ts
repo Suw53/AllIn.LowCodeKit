@@ -92,7 +92,8 @@ export const useFormTemplateStore = defineStore('formTemplate', () => {
           options: f.options,
           isRequired: f.isRequired,
           remark: f.remark,
-          columnOrder: f.columnOrder
+          columnOrder: f.columnOrder,
+          span: f.span ?? 1
         }))
       }
       template.value = await saveTemplateForMenu(menuId, dto)

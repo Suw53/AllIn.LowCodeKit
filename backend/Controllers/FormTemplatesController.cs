@@ -77,6 +77,7 @@ public class FormTemplatesController : ControllerBase
             IsRequired = f.IsRequired,
             Remark = f.Remark,
             ColumnOrder = f.ColumnOrder,
+            Span = f.Span,
             Sort = i
         }).ToList();
 
@@ -124,6 +125,7 @@ public class FormTemplatesController : ControllerBase
             IsRequired = f.IsRequired,
             Remark = f.Remark,
             ColumnOrder = f.ColumnOrder,
+            Span = f.Span,
             Sort = i
         }).ToList();
 
@@ -178,6 +180,7 @@ public class FormTemplatesController : ControllerBase
                 IsRequired = f.IsRequired,
                 Remark = f.Remark,
                 ColumnOrder = f.ColumnOrder,
+                Span = f.Span,
                 Sort = i
             }).ToList()
         };
@@ -227,5 +230,6 @@ public record FieldDto(
     string? Options,
     bool IsRequired,
     string? Remark,
-    int ColumnOrder
+    int ColumnOrder,
+    int Span
 );
