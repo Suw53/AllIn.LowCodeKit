@@ -110,6 +110,36 @@ public class DynamicDataService
         return (total, items);
     }
 
+    /// <summary>查询全部匹配数据（不分页，用于导出）</summary>
+    public async Task<List<Dictionary<string, object?>>> QueryAllAsync(
+        int menuId,
+        string? keyword,
+        List<FilterCondition>? filters,
+        IEnumerable<FormField> fields)
+    {
+        var tableName = TableName(menuId);
+        var fieldNames = fields.Select(f => f.FieldName).ToList();
+        var (whereSql, parameters) = BuildWhere(keyword, filters, fieldNames);
+
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+
+        var items = new List<Dictionary<string, object?>>();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT * FROM \"{tableName}\"{whereSql} ORDER BY Id DESC";
+        AddParameters(cmd, parameters);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object?>();
+            for (int i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            items.Add(row);
+        }
+
+        return items;
+    }
+
     /// <summary>插入一条记录，返回新行 Id</summary>
     public async Task<long> InsertAsync(int menuId, Dictionary<string, string?> data)
     {

@@ -59,6 +59,20 @@ function handleReset() {
   emit('update:visible', false)
 }
 
+// ────────── 方案条件预览 ──────────
+function parseSchemeConditions(scheme: FilterScheme): string[] {
+  try {
+    const conds = JSON.parse(scheme.config) as FilterCondition[]
+    return conds.map(c => {
+      const fieldLabel = props.fields.find(f => f.fieldName === c.field)?.label ?? c.field
+      const opLabel = c.op === 'eq' ? '等于' : '包含'
+      return `${fieldLabel} ${opLabel} "${c.value}"`
+    })
+  } catch {
+    return []
+  }
+}
+
 // ────────── 保存方案 ──────────
 const schemeName = ref('')
 
@@ -81,12 +95,18 @@ async function handleDeleteScheme(id: number) {
 }
 
 function handleLoadScheme(scheme: FilterScheme) {
-  emit('load-scheme', scheme)
+  // 解析方案条件加载到编辑区，同时立即应用
   try {
     localFilters.value = JSON.parse(scheme.config) as FilterCondition[]
   } catch {
     localFilters.value = []
   }
+  // 立即触发应用，让用户看到筛选结果生效
+  const valid = localFilters.value.filter(f => f.field && f.value)
+  emit('update:modelValue', valid)
+  emit('load-scheme', scheme)
+  emit('apply')
+  emit('update:visible', false)
 }
 </script>
 
@@ -105,7 +125,14 @@ function handleLoadScheme(scheme: FilterScheme) {
         <div class="section-title">已保存方案</div>
         <div class="scheme-list">
           <div v-for="s in schemes" :key="s.id" class="scheme-item">
-            <span class="scheme-name" @click="handleLoadScheme(s)">{{ s.name }}</span>
+            <el-tooltip placement="right" :show-after="300">
+              <template #content>
+                <div v-for="(c, i) in parseSchemeConditions(s)" :key="i" style="font-size:12px;">
+                  {{ c }}
+                </div>
+              </template>
+              <span class="scheme-name" @click="handleLoadScheme(s)">{{ s.name }}</span>
+            </el-tooltip>
             <el-button link type="danger" size="small" @click="handleDeleteScheme(s.id)">删除</el-button>
           </div>
         </div>

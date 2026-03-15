@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { queryData, createRow, updateRow, deleteRow } from '@/api/data'
+import { queryData, createRow, updateRow, deleteRow, downloadTemplate, exportExcel, importData } from '@/api/data'
 import { getFilterSchemes, createFilterScheme, deleteFilterScheme } from '@/api/filterScheme'
 import { getExportPreference, saveExportPreference } from '@/api/exportPreference'
 import type { DataRow, FilterCondition, FilterScheme } from '@/types'
@@ -109,6 +109,27 @@ export const useModuleStore = defineStore('module', () => {
     await saveExportPreference(menuId, columns)
   }
 
+  /** 下载导入模板 */
+  async function fetchTemplate(menuId: number) {
+    await downloadTemplate(menuId)
+  }
+
+  /** 导出当前筛选结果为 Excel */
+  async function exportToExcel(menuId: number, columns: string[]) {
+    await exportExcel(menuId, {
+      keyword: keyword.value || undefined,
+      filters: activeFilters.value.length ? activeFilters.value : undefined,
+      columns
+    })
+  }
+
+  /** 从 Excel 批量导入数据 */
+  async function importFromExcel(menuId: number, file: File) {
+    const result = await importData(menuId, file)
+    await fetchData(menuId)
+    return result
+  }
+
   /** 切换菜单时重置状态 */
   function reset() {
     rows.value = []
@@ -127,6 +148,7 @@ export const useModuleStore = defineStore('module', () => {
     fetchData, addRow, editRow, removeRow,
     fetchFilterSchemes, saveFilterScheme, removeFilterScheme, applyScheme,
     fetchExportPreference, saveExportColumns,
+    fetchTemplate, exportToExcel, importFromExcel,
     reset
   }
 })

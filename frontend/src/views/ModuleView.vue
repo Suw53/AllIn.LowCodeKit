@@ -1,4 +1,4 @@
-<!-- 模块数据列表页：VXE-Table 动态列、搜索、筛选、新增/编辑/删除 -->
+<!-- 模块数据列表页：VXE-Table 动态列、搜索、筛选、新增/编辑/删除、Excel 导入导出 -->
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -8,7 +8,7 @@ import { useModuleStore } from '@/stores/moduleStore'
 import { useFormTemplateStore } from '@/stores/formTemplateStore'
 import DataForm from '@/components/DataForm.vue'
 import DataFilter from '@/components/DataFilter.vue'
-import type { DataRow, FilterCondition } from '@/types'
+import type { DataRow } from '@/types'
 
 // ────────── 路由 & Store ──────────
 const route = useRoute()
@@ -26,27 +26,13 @@ const menuName = computed(() => {
   return `模块 #${menuId.value}`
 })
 
-// ────────── 模板（字段列定义） ──────────
-const fields = computed(() => templateStore.template?.fields ?? [])
+// ────────── 字段列定义（按 columnOrder 排序） ──────────
 const sortedFields = computed(() =>
-  [...fields.value].sort((a, b) => a.columnOrder - b.columnOrder)
+  [...(templateStore.template?.fields ?? [])].sort((a, b) => a.columnOrder - b.columnOrder)
 )
 
 // ────────── 初始化 ──────────
-onMounted(async () => {
-  store.reset()
-  await templateStore.loadByMenu(menuId.value)
-  if (templateStore.template) {
-    await Promise.all([
-      store.fetchData(menuId.value),
-      store.fetchFilterSchemes(menuId.value),
-      store.fetchExportPreference(menuId.value)
-    ])
-  }
-})
-
-// 路由切换时重新加载
-watch(menuId, async (id) => {
+async function loadModule(id: number) {
   store.reset()
   templateStore.reset()
   await templateStore.loadByMenu(id)
@@ -57,11 +43,11 @@ watch(menuId, async (id) => {
       store.fetchExportPreference(id)
     ])
   }
-})
+}
 
-onUnmounted(() => {
-  store.reset()
-})
+onMounted(() => loadModule(menuId.value))
+watch(menuId, (id) => loadModule(id))
+onUnmounted(() => store.reset())
 
 // ────────── 搜索 ──────────
 const keywordInput = ref('')
@@ -78,6 +64,7 @@ function onKeywordChange() {
 
 // ────────── 高级筛选 ──────────
 const filterVisible = ref(false)
+const hasActiveFilter = computed(() => store.activeFilters.length > 0)
 
 function onFiltersApply() {
   store.page = 1
@@ -94,11 +81,8 @@ async function onSaveScheme(name: string) {
 }
 
 async function onDeleteScheme(id: number) {
-  try {
-    await store.removeFilterScheme(id)
-  } catch {
-    ElMessage.error('删除失败')
-  }
+  try { await store.removeFilterScheme(id) }
+  catch { ElMessage.error('删除失败') }
 }
 
 // ────────── 新增/编辑 ──────────
@@ -157,12 +141,57 @@ function onPageSizeChange(ps: number) {
   store.fetchData(menuId.value)
 }
 
-// ────────── 导出 ──────────
+// ────────── 模板下载 ──────────
+const templateDownloading = ref(false)
+async function handleDownloadTemplate() {
+  templateDownloading.value = true
+  try {
+    await store.fetchTemplate(menuId.value)
+  } catch {
+    ElMessage.error('模板下载失败')
+  } finally {
+    templateDownloading.value = false
+  }
+}
+
+// ────────── Excel 导入 ──────────
+const importInputRef = ref<HTMLInputElement>()
+const importing = ref(false)
+
+function triggerImport() {
+  importInputRef.value?.click()
+}
+
+async function handleImportFile(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  ;(e.target as HTMLInputElement).value = ''
+
+  importing.value = true
+  try {
+    const result = await store.importFromExcel(menuId.value, file)
+    if (result.errors.length > 0) {
+      ElMessageBox.alert(
+        `成功导入 ${result.imported} 条，${result.errors.length} 条失败：\n${result.errors.slice(0, 10).join('\n')}`,
+        '导入结果',
+        { type: result.imported > 0 ? 'warning' : 'error' }
+      )
+    } else {
+      ElMessage.success(`成功导入 ${result.imported} 条数据`)
+    }
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : '导入失败')
+  } finally {
+    importing.value = false
+  }
+}
+
+// ────────── Excel 导出 ──────────
 const exportVisible = ref(false)
 const exportSelected = ref<string[]>([])
+const exporting = ref(false)
 
 function openExport() {
-  // 默认使用上次记忆的列，若无则全选
   exportSelected.value = store.exportColumns.length
     ? store.exportColumns
     : sortedFields.value.map(f => f.fieldName)
@@ -170,32 +199,17 @@ function openExport() {
 }
 
 async function handleExport() {
-  await store.saveExportColumns(menuId.value, exportSelected.value)
-
-  const colFields = sortedFields.value.filter(f => exportSelected.value.includes(f.fieldName))
-  const headers = ['序号', ...colFields.map(f => f.label)]
-  const csvRows = [headers.join(',')]
-  store.rows.forEach((row, idx) => {
-    const cells = [String(idx + 1), ...colFields.map(f => {
-      const v = String(row[f.fieldName] ?? '')
-      return v.includes(',') || v.includes('\n') ? `"${v.replace(/"/g, '""')}"` : v
-    })]
-    csvRows.push(cells.join(','))
-  })
-
-  const bom = '\uFEFF'
-  const blob = new Blob([bom + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${menuName.value}-${new Date().toLocaleDateString()}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-  exportVisible.value = false
+  exporting.value = true
+  try {
+    await store.saveExportColumns(menuId.value, exportSelected.value)
+    await store.exportToExcel(menuId.value, exportSelected.value)
+    exportVisible.value = false
+  } catch {
+    ElMessage.error('导出失败')
+  } finally {
+    exporting.value = false
+  }
 }
-
-// ────────── 筛选激活标记 ──────────
-const hasActiveFilter = computed(() => store.activeFilters.length > 0)
 </script>
 
 <template>
@@ -204,11 +218,11 @@ const hasActiveFilter = computed(() => store.activeFilters.length > 0)
     <!-- ── 顶部工具栏 ── -->
     <div class="module-header">
       <div class="header-left">
-        <el-button link icon="ArrowLeft" @click="router.back()">返回</el-button>
         <span class="page-title">{{ menuName }}</span>
         <el-tag v-if="store.total > 0" type="info" size="small">共 {{ store.total }} 条</el-tag>
       </div>
       <div class="header-right">
+        <!-- 搜索 -->
         <el-input
           v-model="keywordInput"
           placeholder="关键词搜索"
@@ -221,15 +235,45 @@ const hasActiveFilter = computed(() => store.activeFilters.length > 0)
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
 
+        <!-- 高级筛选（有激活条件时显示蓝色圆点） -->
         <el-badge :is-dot="hasActiveFilter">
           <el-button size="small" icon="Filter" @click="filterVisible = true">高级筛选</el-button>
         </el-badge>
 
         <el-button size="small" type="primary" icon="Plus" @click="openAdd">新增</el-button>
-        <el-button size="small" icon="Download" @click="openExport">导出</el-button>
+
+        <!-- 导入/导出下拉 -->
+        <el-dropdown trigger="click">
+          <el-button size="small" icon="Document">
+            模板/导入/导出 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="handleDownloadTemplate">
+                <el-icon><Download /></el-icon> 下载导入模板
+              </el-dropdown-item>
+              <el-dropdown-item @click="triggerImport">
+                <el-icon><Upload /></el-icon> 导入 Excel
+              </el-dropdown-item>
+              <el-dropdown-item @click="openExport">
+                <el-icon><Download /></el-icon> 导出 Excel
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
         <el-button size="small" icon="Setting" disabled title="Phase 6 实现">自动化</el-button>
       </div>
     </div>
+
+    <!-- 隐藏的文件输入（导入） -->
+    <input
+      ref="importInputRef"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display:none"
+      @change="handleImportFile"
+    />
 
     <!-- ── 无模板提示 ── -->
     <div v-if="!templateStore.loading && !templateStore.template" class="no-template">
@@ -250,10 +294,17 @@ const hasActiveFilter = computed(() => store.activeFilters.length > 0)
           stripe
           height="100%"
           size="small"
+          :checkbox-config="{ highlight: true }"
+          :sort-config="{ trigger: 'cell', defaultSort: { field: 'Id', order: 'desc' } }"
           :scroll-y="{ enabled: true }"
         >
+          <!-- 全选复选框列 -->
+          <vxe-column type="checkbox" width="46" fixed="left" />
+
+          <!-- 序号列 -->
           <vxe-column type="seq" width="60" title="序号" fixed="left" />
 
+          <!-- 动态数据列 -->
           <vxe-column
             v-for="field in sortedFields"
             :key="field.fieldName"
@@ -261,8 +312,10 @@ const hasActiveFilter = computed(() => store.activeFilters.length > 0)
             :title="field.label"
             min-width="120"
             show-overflow
+            sortable
           />
 
+          <!-- 操作列 -->
           <vxe-column title="操作" width="120" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
@@ -321,7 +374,7 @@ const hasActiveFilter = computed(() => store.activeFilters.length > 0)
       <template #footer>
         <el-button @click="exportSelected = sortedFields.map(f => f.fieldName)">全选</el-button>
         <el-button @click="exportVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleExport">导出 CSV</el-button>
+        <el-button type="primary" :loading="exporting" @click="handleExport">导出 Excel</el-button>
       </template>
     </el-dialog>
 
