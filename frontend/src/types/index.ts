@@ -58,3 +58,36 @@ export interface FormTemplate {
   updatedAt: string
   fields: FormField[]
 }
+
+// ────────── Phase 4：列表与数据管理 ──────────
+
+/** 动态数据行：Id + CreatedAt + UpdatedAt + 各字段值 */
+export type DataRow = Record<string, unknown>
+
+/** 字段级筛选条件 */
+export interface FilterCondition {
+  field: string
+  /** eq：精确匹配；contains：模糊匹配 */
+  op: 'eq' | 'contains'
+  value: string
+}
+
+/** 高级筛选方案 */
+export interface FilterScheme {
+  id: number
+  menuId: number
+  name: string
+  /** FilterCondition[] 序列化的 JSON */
+  config: string
+  createdAt: string
+}
+
+/** 导出列偏好 */
+export interface ExportPreference {
+  id: number
+  menuId: number
+  /** 已选中导出列名 JSON 数组 */
+  selectedColumns: string
+  updatedAt: string
+}
+

@@ -1,4 +1,5 @@
 using AllIn.LowCodeKit.Backend.Data;
+using AllIn.LowCodeKit.Backend.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
 
@@ -12,6 +13,9 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
+
+// 注册动态数据服务
+builder.Services.AddSingleton<DynamicDataService>();
 
 // 配置SQLite数据库
 var dbPath = Path.Combine(

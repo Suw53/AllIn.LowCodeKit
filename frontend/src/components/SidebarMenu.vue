@@ -197,8 +197,7 @@ function navigate(menu: MenuItem) {
   if (menu.isSystem) {
     router.push('/global-config')
   } else {
-    // TODO Phase 4 完成后改为 /module/:menuId；当前直接进表单设计器便于测试
-    router.push(`/form-designer/${menu.id}`)
+    router.push(`/module/${menu.id}`)
   }
 }
 </script>
