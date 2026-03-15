@@ -17,6 +17,9 @@ builder.Services.AddControllers()
 // 注册动态数据服务
 builder.Services.AddSingleton<DynamicDataService>();
 
+// 注册 Roslyn 脚本执行引擎
+builder.Services.AddSingleton<RoslynScriptEngine>();
+
 // 配置SQLite数据库
 var dbPath = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

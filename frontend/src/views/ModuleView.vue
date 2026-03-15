@@ -262,7 +262,7 @@ async function handleExport() {
           </template>
         </el-dropdown>
 
-        <el-button size="small" icon="Setting" disabled title="Phase 6 实现">自动化</el-button>
+        <el-button size="small" icon="Setting" @click="router.push(`/automation/${menuId}`)">自动化</el-button>
       </div>
     </div>
 

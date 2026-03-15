@@ -10,6 +10,7 @@ import 'vxe-table/lib/style.css'
 import router from './router'
 import App from './App.vue'
 import './style.css'
+import { useThemeStore } from '@/stores/themeStore'
 
 const app = createApp(App)
 
@@ -24,3 +25,6 @@ app.use(VXETable)
 app.use(router)
 
 app.mount('#app')
+
+// 启动时加载持久化的主题配置（mount 后 Pinia 已就绪）
+useThemeStore().loadTheme()

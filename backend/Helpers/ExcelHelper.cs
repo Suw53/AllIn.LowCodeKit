@@ -63,9 +63,11 @@ public static class ExcelHelper
                     var options = System.Text.Json.JsonSerializer.Deserialize<string[]>(field.Options);
                     if (options?.Length > 0)
                     {
-                        var constraint = sheet.DataValidationHelper.CreateExplicitListConstraint(options);
+                        var xssfSheet = (NPOI.XSSF.UserModel.XSSFSheet)sheet;
+                        var dvHelper = new NPOI.XSSF.UserModel.XSSFDataValidationHelper(xssfSheet);
+                        var constraint = dvHelper.CreateExplicitListConstraint(options);
                         var addressList = new CellRangeAddressList(1, 10000, i, i);
-                        var validation = sheet.DataValidationHelper.CreateValidation(constraint, addressList);
+                        var validation = dvHelper.CreateValidation(constraint, addressList);
                         validation.ShowErrorBox = true;
                         validation.CreateErrorBox("输入错误", $"请从下拉列表中选择「{field.Label}」的值");
                         sheet.AddValidationData(validation);
