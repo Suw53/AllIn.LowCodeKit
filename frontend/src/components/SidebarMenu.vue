@@ -78,7 +78,11 @@ function resolveTarget(target: HTMLElement): { menu: MenuItem; level: 1 | 2 } | 
 
 /** document 级 contextmenu 监听，完全绕过 Element Plus 内部事件处理 */
 function handleDocContextMenu(e: MouseEvent) {
-  if (!sidebarRef.value?.contains(e.target as Node)) return
+  if (!sidebarRef.value?.contains(e.target as Node)) {
+    // 右键命中侧边栏外：关闭已打开的菜单，不阻止浏览器默认行为
+    ctxMenu.value.visible = false
+    return
+  }
   e.preventDefault()
 
   const result = resolveTarget(e.target as HTMLElement)
@@ -111,6 +115,7 @@ function handleDocContextMenu(e: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('contextmenu', handleDocContextMenu)
+  menuStore.fetchMenus()
 })
 onUnmounted(() => {
   document.removeEventListener('contextmenu', handleDocContextMenu)
@@ -186,10 +191,6 @@ async function doDelete(menu: MenuItem) {
 function navigate(menu: MenuItem) {
   router.push(menu.isSystem ? '/global-config' : `/module/${menu.id}`)
 }
-
-onMounted(() => {
-  menuStore.fetchMenus()
-})
 </script>
 
 <template>

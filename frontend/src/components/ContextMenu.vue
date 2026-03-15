@@ -23,20 +23,19 @@ function handleItemClick(item: ContextMenuItem) {
 }
 
 function handleOutsideEvent() {
-  if (props.visible) emit('close')
+  emit('close')
 }
 
 onMounted(() => {
-  // 延迟注册，避免触发本次右键事件立即关闭菜单
+  // 延迟注册，避免本次 click 事件立即关闭菜单
+  // 注意：不监听 contextmenu，由调用方负责关闭（防止与调用方的 document contextmenu 监听冲突）
   setTimeout(() => {
     document.addEventListener('click', handleOutsideEvent)
-    document.addEventListener('contextmenu', handleOutsideEvent)
   }, 0)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleOutsideEvent)
-  document.removeEventListener('contextmenu', handleOutsideEvent)
 })
 </script>
 
