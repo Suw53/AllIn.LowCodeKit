@@ -48,6 +48,21 @@ public class FilterSchemesController : ControllerBase
     }
 
     /// <summary>
+    /// 更新筛选方案（名称和条件）
+    /// PUT /api/filter-schemes/{id}
+    /// </summary>
+    [HttpPut("api/filter-schemes/{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromBody] FilterSchemeRequest req)
+    {
+        var scheme = await _db.FilterSchemes.FindAsync(id);
+        if (scheme == null) return NotFound();
+        scheme.Name = req.Name;
+        scheme.Config = req.Config;
+        await _db.SaveChangesAsync();
+        return Ok(scheme);
+    }
+
+    /// <summary>
     /// 删除筛选方案
     /// DELETE /api/filter-schemes/{id}
     /// </summary>

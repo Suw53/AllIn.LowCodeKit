@@ -63,6 +63,17 @@ public class DynamicDataController : ControllerBase
     }
 
     /// <summary>
+    /// 获取各批次统计信息（批次号、行数）
+    /// GET /api/menus/{menuId}/data/batch-stats
+    /// </summary>
+    [HttpGet("api/menus/{menuId:int}/data/batch-stats")]
+    public async Task<IActionResult> GetBatchStats(int menuId)
+    {
+        var stats = await _dataService.GetBatchStatsAsync(menuId);
+        return Ok(stats);
+    }
+
+    /// <summary>
     /// 下载 Excel 导入模板
     /// GET /api/menus/{menuId}/data/template
     /// </summary>
@@ -202,6 +213,20 @@ public class DynamicDataController : ControllerBase
         }
 
         return Ok(new { imported, batchId = req.BatchId });
+    }
+
+    /// <summary>
+    /// 批量删除多条记录
+    /// DELETE /api/menus/{menuId}/data/batch
+    /// </summary>
+    [HttpDelete("api/menus/{menuId:int}/data/batch")]
+    public async Task<IActionResult> BatchDelete(int menuId, [FromBody] List<long> ids)
+    {
+        if (ids == null || ids.Count == 0)
+            return BadRequest(new { message = "请提供要删除的记录 ID 列表" });
+
+        var deleted = await _dataService.BatchDeleteAsync(menuId, ids);
+        return Ok(new { deleted });
     }
 
     /// <summary>

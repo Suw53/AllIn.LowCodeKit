@@ -16,6 +16,13 @@ export const createFilterScheme = (menuId: number, name: string, config: string)
   http.post<FilterScheme>(`/api/menus/${menuId}/filter-schemes`, { name, config })
 
 /**
+ * 更新筛选方案（名称和条件）
+ * PUT /api/filter-schemes/{id}
+ */
+export const updateFilterScheme = (id: number, name: string, config: string) =>
+  http.put<FilterScheme>(`/api/filter-schemes/${id}`, { name, config })
+
+/**
  * 删除筛选方案
  * DELETE /api/filter-schemes/{id}
  */

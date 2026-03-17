@@ -22,6 +22,11 @@ export interface ImportPreviewResult {
   errorCount: number
 }
 
+export interface BatchStat {
+  batchId: string
+  count: number
+}
+
 /**
  * 分页查询模块数据
  * GET /api/menus/{menuId}/data
@@ -38,6 +43,20 @@ export const queryData = (menuId: number, params: DataQueryParams = {}) => {
     }
   })
 }
+
+/**
+ * 获取批次统计信息（批次号 + 行数）
+ * GET /api/menus/{menuId}/data/batch-stats
+ */
+export const getBatchStats = (menuId: number) =>
+  http.get<BatchStat[]>(`/api/menus/${menuId}/data/batch-stats`)
+
+/**
+ * 批量删除
+ * DELETE /api/menus/{menuId}/data/batch
+ */
+export const batchDeleteRows = (menuId: number, ids: number[]) =>
+  http.delete<{ deleted: number }>(`/api/menus/${menuId}/data/batch`, { data: ids })
 
 /**
  * 获取批次号列表（倒序）

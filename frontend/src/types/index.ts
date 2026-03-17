@@ -88,6 +88,8 @@ export interface ExportPreference {
   menuId: number
   /** 已选中导出列名 JSON 数组 */
   selectedColumns: string
+  /** 列表可见列名 JSON 数组，null 表示显示全部列 */
+  visibleColumns: string | null
   updatedAt: string
 }
 

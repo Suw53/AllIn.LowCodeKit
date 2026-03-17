@@ -267,6 +267,54 @@ public class DynamicDataService
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
+    /// <summary>批量删除多条记录，返回实际删除数量</summary>
+    public async Task<int> BatchDeleteAsync(int menuId, List<long> ids)
+    {
+        if (ids.Count == 0) return 0;
+        var tableName = TableName(menuId);
+        var placeholders = ids.Select((_, i) => $"@id{i}");
+        var sql = $"DELETE FROM \"{tableName}\" WHERE \"Id\" IN ({string.Join(", ", placeholders)})";
+
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        for (int i = 0; i < ids.Count; i++)
+        {
+            var p = cmd.CreateParameter();
+            p.ParameterName = $"@id{i}";
+            p.Value = ids[i];
+            cmd.Parameters.Add(p);
+        }
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>获取各批次的统计信息（批次号、行数），不含手动添加行</summary>
+    public async Task<List<BatchStat>> GetBatchStatsAsync(int menuId)
+    {
+        var tableName = TableName(menuId);
+        var result = new List<BatchStat>();
+
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+
+        if (!await TableExistsAsync(conn, tableName)) return result;
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT "_BatchId", COUNT(*)
+            FROM "{tableName}"
+            WHERE "_BatchId" IS NOT NULL
+            GROUP BY "_BatchId"
+            ORDER BY "_BatchId" DESC
+            """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            result.Add(new BatchStat(reader.GetString(0), Convert.ToInt32(reader.GetValue(1))));
+
+        return result;
+    }
+
     // ────────── 私有辅助 ──────────
 
     private static string TableName(int menuId) => $"DynamicData_{menuId}";
@@ -382,3 +430,6 @@ public class FilterCondition
     public string Op { get; set; } = "contains";
     public string Value { get; set; } = string.Empty;
 }
+
+/// <summary>批次统计信息</summary>
+public record BatchStat(string BatchId, int Count);

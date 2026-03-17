@@ -22,7 +22,7 @@ public class FilterScheme
 }
 
 /// <summary>
-/// 导出列偏好，记录每个功能模块用户最后一次勾选的导出列
+/// 导出列偏好，记录每个功能模块用户最后一次勾选的导出列及列可见性
 /// </summary>
 public class ExportPreference
 {
@@ -34,6 +34,9 @@ public class ExportPreference
 
     /// <summary>已选中导出的列名（JSON数组）</summary>
     public string SelectedColumns { get; set; } = "[]";
+
+    /// <summary>列表可见列名（JSON数组），null 表示显示全部列</summary>
+    public string? VisibleColumns { get; set; }
 
     /// <summary>更新时间</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.Now;

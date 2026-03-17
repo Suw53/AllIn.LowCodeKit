@@ -3,9 +3,9 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   queryData, createRow, updateRow, deleteRow,
-  downloadTemplate, exportExcel, getBatchIds, confirmImport
+  downloadTemplate, exportExcel, getBatchIds, confirmImport, batchDeleteRows
 } from '@/api/data'
-import { getFilterSchemes, createFilterScheme, deleteFilterScheme } from '@/api/filterScheme'
+import { getFilterSchemes, createFilterScheme, updateFilterScheme as updateFilterSchemeApi, deleteFilterScheme } from '@/api/filterScheme'
 import { getExportPreference, saveExportPreference } from '@/api/exportPreference'
 import type { DataRow, FilterCondition, FilterScheme } from '@/types'
 
@@ -21,7 +21,7 @@ export const useModuleStore = defineStore('module', () => {
 
   // ────────── 批次号 ──────────
   const batchIds = ref<string[]>([])
-  const currentBatchId = ref<string>('latest') // 默认显示最新批次
+  const currentBatchId = ref<string>('') // 默认显示全部数据
 
   // ────────── 筛选方案状态 ──────────
   const filterSchemes = ref<FilterScheme[]>([])
@@ -52,16 +52,13 @@ export const useModuleStore = defineStore('module', () => {
     }
   }
 
-  /** 加载批次号列表并设置默认批次 */
+  /** 加载批次号列表 */
   async function fetchBatchIds(menuId: number) {
     try {
       const ids = await getBatchIds(menuId)
       batchIds.value = ids
-      // 若有批次，默认选择最新批次（"latest"语义）；若无批次，显示全部
-      currentBatchId.value = ids.length > 0 ? 'latest' : ''
     } catch {
       batchIds.value = []
-      currentBatchId.value = ''
     }
   }
 
@@ -83,16 +80,30 @@ export const useModuleStore = defineStore('module', () => {
     await fetchData(menuId)
   }
 
+  /** 批量删除选中行 */
+  async function batchRemoveRows(menuId: number, ids: number[]) {
+    await batchDeleteRows(menuId, ids)
+    await fetchData(menuId)
+  }
+
   /** 加载筛选方案列表 */
   async function fetchFilterSchemes(menuId: number) {
     filterSchemes.value = await getFilterSchemes(menuId)
   }
 
   /** 保存当前筛选条件为方案 */
-  async function saveFilterScheme(menuId: number, name: string) {
-    const config = JSON.stringify(activeFilters.value)
+  async function saveFilterScheme(menuId: number, name: string, conditions: FilterCondition[]) {
+    const config = JSON.stringify(conditions)
     const scheme = await createFilterScheme(menuId, name, config)
     filterSchemes.value.unshift(scheme)
+  }
+
+  /** 更新已有筛选方案（名称和条件） */
+  async function updateFilterScheme(id: number, name: string, conditions: FilterCondition[]) {
+    const config = JSON.stringify(conditions)
+    const updated = await updateFilterSchemeApi(id, name, config)
+    const idx = filterSchemes.value.findIndex(s => s.id === id)
+    if (idx !== -1) filterSchemes.value[idx] = updated
   }
 
   /** 删除筛选方案 */
@@ -148,9 +159,8 @@ export const useModuleStore = defineStore('module', () => {
   /** 确认导入（保存预览中有效的行） */
   async function importConfirm(menuId: number, batchId: string, validRows: Record<string, string | null>[]) {
     const result = await confirmImport(menuId, batchId, validRows)
-    // 刷新批次列表并切换到新批次
+    // 刷新批次列表，保持全部数据视图
     await fetchBatchIds(menuId)
-    currentBatchId.value = batchId
     await fetchData(menuId)
     return result
   }
@@ -165,7 +175,7 @@ export const useModuleStore = defineStore('module', () => {
     filterSchemes.value = []
     exportColumns.value = []
     batchIds.value = []
-    currentBatchId.value = 'latest'
+    currentBatchId.value = ''
     currentMenuId.value = null
   }
 
@@ -173,9 +183,9 @@ export const useModuleStore = defineStore('module', () => {
     rows, total, loading, page, pageSize, keyword, activeFilters,
     filterSchemes, exportColumns, currentMenuId,
     batchIds, currentBatchId,
-    fetchData, addRow, editRow, removeRow,
+    fetchData, addRow, editRow, removeRow, batchRemoveRows,
     fetchBatchIds,
-    fetchFilterSchemes, saveFilterScheme, removeFilterScheme, applyScheme,
+    fetchFilterSchemes, saveFilterScheme, updateFilterScheme, removeFilterScheme, applyScheme,
     fetchExportPreference, saveExportColumns,
     fetchTemplate, exportToExcel, importConfirm,
     reset

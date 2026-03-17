@@ -1,6 +1,6 @@
-<!-- 高级筛选面板：字段级条件配置、保存/加载方案 -->
+<!-- 高级筛选面板：字段级条件配置、保存/加载/更新方案 -->
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormField, FilterCondition, FilterScheme } from '@/types'
 
@@ -10,25 +10,28 @@ const props = defineProps<{
   fields: FormField[]
   modelValue: FilterCondition[]
   schemes: FilterScheme[]
+  /** 保存方案 loading（由父组件控制） */
+  schemeSaving?: boolean
+  /** 更新方案 loading（由父组件控制） */
+  schemeUpdating?: boolean
+  /** 正在删除的方案 ID（由父组件控制，用于逐行 loading） */
+  deletingSchemeId?: number | null
 }>()
 
 const emit = defineEmits<{
   'update:visible': [v: boolean]
   'update:modelValue': [v: FilterCondition[]]
   apply: []
-  'save-scheme': [name: string]
+  /** 新建方案：传入名称 + 当前编辑区条件（只要有字段即可保存） */
+  'save-scheme': [name: string, conditions: FilterCondition[]]
+  /** 更新已有方案：传入 id + 新名称 + 当前编辑区条件 */
+  'update-scheme': [id: number, name: string, conditions: FilterCondition[]]
   'delete-scheme': [id: number]
   'load-scheme': [scheme: FilterScheme]
 }>()
 
 // ────────── 本地筛选条件（深拷贝，避免影响父组件直到点Apply） ──────────
 const localFilters = ref<FilterCondition[]>([])
-
-watch(
-  () => props.visible,
-  (v) => { if (v) localFilters.value = props.modelValue.map(f => ({ ...f })) },
-  { immediate: true }
-)
 
 // ────────── 操作符选项 ──────────
 const opOptions = [
@@ -45,7 +48,7 @@ function removeCondition(idx: number) {
 }
 
 function handleApply() {
-  // 过滤掉未填写的条件
+  // 应用时只发送有字段且有值的条件
   const valid = localFilters.value.filter(f => f.field && f.value)
   emit('update:modelValue', valid)
   emit('apply')
@@ -59,7 +62,7 @@ function handleReset() {
   emit('update:visible', false)
 }
 
-// ────────── 方案条件预览 ──────────
+// ────────── 方案条件预览（tooltip 用） ──────────
 function parseSchemeConditions(scheme: FilterScheme): string[] {
   try {
     const conds = JSON.parse(scheme.config) as FilterCondition[]
@@ -73,18 +76,67 @@ function parseSchemeConditions(scheme: FilterScheme): string[] {
   }
 }
 
-// ────────── 保存方案 ──────────
+// ────────── 当前已加载的方案（用于高亮 + 更新） ──────────
+const loadedSchemeId = ref<number | null>(null)
+/** 更新模式下方案名的编辑副本 */
+const updatingName = ref('')
+
+const loadedScheme = computed(() =>
+  loadedSchemeId.value !== null
+    ? props.schemes.find(s => s.id === loadedSchemeId.value) ?? null
+    : null
+)
+
+// 打开时重置状态
+watch(
+  () => props.visible,
+  (v) => {
+    if (v) {
+      localFilters.value = props.modelValue.map(f => ({ ...f }))
+      loadedSchemeId.value = null
+      updatingName.value = ''
+    }
+  },
+  { immediate: true }
+)
+
+function handleLoadScheme(scheme: FilterScheme) {
+  try {
+    localFilters.value = JSON.parse(scheme.config) as FilterCondition[]
+  } catch {
+    localFilters.value = []
+  }
+  loadedSchemeId.value = scheme.id
+  updatingName.value = scheme.name
+  emit('load-scheme', scheme)
+}
+
+// ────────── 新建方案 ──────────
 const schemeName = ref('')
 
-async function handleSaveScheme() {
+function handleSaveScheme() {
   if (!schemeName.value.trim()) {
     ElMessage.warning('请输入方案名称')
     return
   }
-  emit('save-scheme', schemeName.value.trim())
+  // 只要选了字段即可保存（允许筛选值为空，方便后续使用时填值）
+  const conditions = localFilters.value.filter(f => f.field)
+  emit('save-scheme', schemeName.value.trim(), conditions)
   schemeName.value = ''
 }
 
+// ────────── 更新已加载方案 ──────────
+function handleUpdateScheme() {
+  if (!updatingName.value.trim()) {
+    ElMessage.warning('方案名称不能为空')
+    return
+  }
+  if (loadedSchemeId.value === null) return
+  const conditions = localFilters.value.filter(f => f.field)
+  emit('update-scheme', loadedSchemeId.value, updatingName.value.trim(), conditions)
+}
+
+// ────────── 删除方案 ──────────
 async function handleDeleteScheme(id: number) {
   await ElMessageBox.confirm('确定删除该筛选方案？', '提示', {
     confirmButtonText: '删除',
@@ -92,17 +144,6 @@ async function handleDeleteScheme(id: number) {
     type: 'warning'
   })
   emit('delete-scheme', id)
-}
-
-function handleLoadScheme(scheme: FilterScheme) {
-  // 只将方案条件加载到编辑区，用户可继续调整后再点"应用筛选"
-  try {
-    localFilters.value = JSON.parse(scheme.config) as FilterCondition[]
-  } catch {
-    localFilters.value = []
-  }
-  emit('load-scheme', scheme)
-  // 不自动关闭抽屉，不自动应用，让用户手动点击"应用筛选"
 }
 </script>
 
@@ -120,16 +161,39 @@ function handleLoadScheme(scheme: FilterScheme) {
       <div v-if="schemes.length > 0" class="section">
         <div class="section-title">已保存方案</div>
         <div class="scheme-list">
-          <div v-for="s in schemes" :key="s.id" class="scheme-item">
+          <div
+            v-for="s in schemes"
+            :key="s.id"
+            class="scheme-item"
+            :class="{ 'scheme-active': loadedSchemeId === s.id }"
+          >
             <el-tooltip placement="right" :show-after="300">
               <template #content>
-                <div v-for="(c, i) in parseSchemeConditions(s)" :key="i" style="font-size:12px;">
+                <div
+                  v-for="(c, i) in parseSchemeConditions(s)"
+                  :key="i"
+                  style="font-size:12px;"
+                >
                   {{ c }}
+                </div>
+                <div v-if="parseSchemeConditions(s).length === 0" style="font-size:12px;color:#ccc;">
+                  暂无条件
                 </div>
               </template>
               <span class="scheme-name" @click="handleLoadScheme(s)">{{ s.name }}</span>
             </el-tooltip>
-            <el-button link type="danger" size="small" @click="handleDeleteScheme(s.id)">删除</el-button>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <el-tag v-if="loadedSchemeId === s.id" size="small" type="primary">已加载</el-tag>
+              <el-button
+                link
+                type="danger"
+                size="small"
+                :loading="deletingSchemeId === s.id"
+                @click="handleDeleteScheme(s.id)"
+              >
+                删除
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -178,7 +242,7 @@ function handleLoadScheme(scheme: FilterScheme) {
           <!-- 值输入 -->
           <el-input
             v-model="condition.value"
-            placeholder="筛选值"
+            placeholder="筛选值（可选）"
             size="small"
             style="flex: 1;"
           />
@@ -191,9 +255,33 @@ function handleLoadScheme(scheme: FilterScheme) {
 
       <el-divider />
 
-      <!-- ── 保存为方案 ── -->
+      <!-- ── 更新已加载方案（有加载方案时显示） ── -->
+      <div v-if="loadedScheme" class="section">
+        <div class="section-title">更新方案</div>
+        <div class="save-row">
+          <el-input
+            v-model="updatingName"
+            placeholder="方案名称"
+            size="small"
+            style="flex: 1;"
+          />
+          <el-button
+            size="small"
+            type="primary"
+            :loading="schemeUpdating"
+            @click="handleUpdateScheme"
+          >
+            更新
+          </el-button>
+        </div>
+        <div class="update-hint">将用当前筛选条件覆盖「{{ loadedScheme.name }}」</div>
+      </div>
+
+      <el-divider v-if="loadedScheme" />
+
+      <!-- ── 新建方案 ── -->
       <div class="section">
-        <div class="section-title">保存为方案</div>
+        <div class="section-title">{{ loadedScheme ? '另存为新方案' : '保存为方案' }}</div>
         <div class="save-row">
           <el-input
             v-model="schemeName"
@@ -201,7 +289,7 @@ function handleLoadScheme(scheme: FilterScheme) {
             size="small"
             style="flex: 1;"
           />
-          <el-button size="small" @click="handleSaveScheme">保存</el-button>
+          <el-button size="small" :loading="schemeSaving" @click="handleSaveScheme">保存</el-button>
         </div>
       </div>
     </div>
@@ -250,6 +338,12 @@ function handleLoadScheme(scheme: FilterScheme) {
   padding: 6px 10px;
   background: #f5f7fa;
   border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.scheme-item.scheme-active {
+  background: #ecf5ff;
+  border-color: #b3d8ff;
 }
 
 .scheme-name {
@@ -280,5 +374,11 @@ function handleLoadScheme(scheme: FilterScheme) {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.update-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 6px;
 }
 </style>

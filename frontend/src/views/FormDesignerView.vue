@@ -11,6 +11,7 @@ import {
   syncRequiredToCode,
   parseRequiredFromCode
 } from '@/stores/formTemplateStore'
+import { withLoading } from '@/utils/loading'
 import CodeEditor from '@/components/CodeEditor.vue'
 import FormFieldItem from '@/components/FormFieldItem.vue'
 import type { FormField } from '@/types'
@@ -135,7 +136,6 @@ async function save() {
     ElMessage.warning('请输入模板名称')
     return
   }
-  // 校验字段基本属性
   for (const f of fields.value) {
     if (!f.fieldName.trim() || !f.label.trim()) {
       ElMessage.warning(`第 ${fields.value.indexOf(f) + 1} 个字段的"字段名"和"标签名"不能为空`)
@@ -147,8 +147,10 @@ async function save() {
   const nameSnapshot = templateName.value.trim()
 
   try {
-    // upsert：单次请求，后端自动处理创建或更新
-    await store.save(menuId.value, nameSnapshot, fieldsSnapshot, latestCode)
+    await withLoading(
+      () => store.save(menuId.value, nameSnapshot, fieldsSnapshot, latestCode),
+      '保存中…'
+    )
     codeLogic.value = latestCode
     ElMessage.success('保存成功')
   } catch (e: unknown) {
@@ -157,22 +159,28 @@ async function save() {
 }
 
 // ────────── 导出 ──────────
+const exporting = ref(false)
+
 async function doExport() {
-  if (!store.template) {
-    // 未保存过，先导出本地状态
-    const data = {
-      name: templateName.value,
-      codeLogic: syncRequiredToCode(codeLogic.value, fields.value),
-      fields: fields.value
-    }
-    downloadJson(data, `${templateName.value || 'form'}-template.json`)
-    return
-  }
+  exporting.value = true
   try {
-    const data = await store.doExport()
-    if (data) downloadJson(data, `${data.name}-template.json`)
+    if (!store.template) {
+      const data = {
+        name: templateName.value,
+        codeLogic: syncRequiredToCode(codeLogic.value, fields.value),
+        fields: fields.value
+      }
+      downloadJson(data, `${templateName.value || 'form'}-template.json`)
+      return
+    }
+    await withLoading(async () => {
+      const data = await store.doExport()
+      if (data) downloadJson(data, `${data.name}-template.json`)
+    }, '导出中…')
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '导出失败')
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -213,7 +221,7 @@ async function handleImportFile(e: Event) {
       { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
     )
 
-    await store.doImport(menuId.value, data)
+    await withLoading(() => store.doImport(menuId.value, data), '导入中…')
     syncFromStore()
     ElMessage.success('导入成功')
   } catch (err) {
@@ -249,8 +257,8 @@ const fieldTypePalette = [
         />
       </div>
       <div class="header-right">
-        <el-button size="small" icon="Download" @click="doExport">导出</el-button>
-        <el-button size="small" icon="Upload" @click="triggerImport">导入</el-button>
+        <el-button size="small" icon="Download" :loading="exporting" @click="doExport">导出</el-button>
+        <el-button size="small" icon="Upload" :loading="store.saving" @click="triggerImport">导入</el-button>
         <el-button
           size="small"
           type="primary"
