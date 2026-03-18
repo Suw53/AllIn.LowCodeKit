@@ -1,5 +1,6 @@
 using AllIn.LowCodeKit.Backend.Data;
 using AllIn.LowCodeKit.Backend.Helpers;
+using AllIn.LowCodeKit.Backend.Models;
 using AllIn.LowCodeKit.Backend.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -74,11 +75,14 @@ public class DynamicDataController : ControllerBase
     }
 
     /// <summary>
-    /// 下载 Excel 导入模板
-    /// GET /api/menus/{menuId}/data/template
+    /// 下载 Excel 导入模板，支持可选的导入模板配置（按配置筛选字段）
+    /// GET /api/menus/{menuId}/data/template?configId={id}&configName={name}
     /// </summary>
     [HttpGet("api/menus/{menuId:int}/data/template")]
-    public async Task<IActionResult> DownloadTemplate(int menuId)
+    public async Task<IActionResult> DownloadTemplate(
+        int menuId,
+        [FromQuery] int? configId = null,
+        [FromQuery] string? configName = null)
     {
         var template = await _db.FormTemplates
             .Include(t => t.Fields)
@@ -86,10 +90,52 @@ public class DynamicDataController : ControllerBase
         if (template == null)
             return NotFound(new { message = "该菜单尚未配置表单模板" });
 
-        var bytes = ExcelHelper.GenerateTemplate(template.Fields);
-        var fileName = Uri.EscapeDataString($"{template.Name}-导入模板.xlsx");
+        IEnumerable<FormField> fieldsToExport = template.Fields;
+
+        // 如果指定了导入模板配置，按配置筛选字段
+        if (configId.HasValue)
+        {
+            var importConfig = await _db.ImportTemplateConfigs.FindAsync(configId.Value);
+            if (importConfig != null)
+            {
+                var selectedFieldNames = JsonSerializer.Deserialize<List<string>>(importConfig.FieldNames);
+                if (selectedFieldNames?.Count > 0)
+                {
+                    fieldsToExport = template.Fields
+                        .Where(f => selectedFieldNames.Contains(f.FieldName));
+                }
+            }
+        }
+
+        var bytes = ExcelHelper.GenerateTemplate(fieldsToExport);
+
+        // 文件名格式：{配置名称}-{模块名称}-导入模板.xlsx
+        var namePart = !string.IsNullOrWhiteSpace(configName) ? $"{configName}-" : "";
+        var fileName = Uri.EscapeDataString($"{namePart}{template.Name}-导入模板.xlsx");
         Response.Headers["Content-Disposition"] = $"attachment; filename*=UTF-8''{fileName}";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    /// <summary>
+    /// 上传Excel文件，仅解析表头列名返回
+    /// POST /api/menus/{menuId}/data/import/headers
+    /// </summary>
+    [HttpPost("api/menus/{menuId:int}/data/import/headers")]
+    public IActionResult ParseHeaders(int menuId, IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "请选择 Excel 文件" });
+
+        try
+        {
+            using var stream = file.OpenReadStream();
+            var headers = ExcelHelper.ParseHeaders(stream);
+            return Ok(new { headers });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"文件解析失败：{ex.Message}" });
+        }
     }
 
     /// <summary>
@@ -129,10 +175,14 @@ public class DynamicDataController : ControllerBase
 
     /// <summary>
     /// 预览导入数据（解析+校验，不保存），返回每行的状态和错误信息
+    /// 支持可选的 mappings JSON 字段（FormData），按映射规则解析+转换
     /// POST /api/menus/{menuId}/data/import/preview
     /// </summary>
     [HttpPost("api/menus/{menuId:int}/data/import/preview")]
-    public async Task<IActionResult> PreviewImport(int menuId, IFormFile file)
+    public async Task<IActionResult> PreviewImport(
+        int menuId,
+        IFormFile file,
+        [FromForm] string? mappings = null)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "请选择 Excel 文件" });
@@ -145,11 +195,58 @@ public class DynamicDataController : ControllerBase
 
         var fields = template.Fields.OrderBy(f => f.ColumnOrder).ToList();
 
+        // 解析映射规则（如果提供）
+        List<MappingRule>? mappingRules = null;
+        if (!string.IsNullOrWhiteSpace(mappings))
+        {
+            try
+            {
+                mappingRules = JsonSerializer.Deserialize<List<MappingRule>>(mappings,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch { /* 解析失败则忽略，走原有逻辑 */ }
+        }
+
         List<Dictionary<string, string?>> dataRows;
         try
         {
             await using var stream = file.OpenReadStream();
-            dataRows = ExcelHelper.ParseImportData(stream, fields);
+            if (mappingRules?.Count > 0)
+            {
+                // 使用映射规则解析
+                dataRows = ExcelHelper.ParseImportDataWithMapping(stream, mappingRules);
+
+                // 执行转换脚本（如果有）
+                var transformService = HttpContext.RequestServices.GetService<ImportTransformService>();
+                if (transformService != null)
+                {
+                    foreach (var row in dataRows)
+                    {
+                        foreach (var rule in mappingRules.Where(r => !string.IsNullOrWhiteSpace(r.TransformScript)))
+                        {
+                            if (row.TryGetValue(rule.TargetField, out var val))
+                            {
+                                try
+                                {
+                                    var transformed = await transformService.TransformAsync(
+                                        rule.TransformScript!, val, rule.SourceColumn, rule.TargetField);
+                                    row[rule.TargetField] = transformed;
+                                }
+                                catch (Exception ex)
+                                {
+                                    // 转换失败保留原值，错误将在校验阶段体现
+                                    row[rule.TargetField] = $"[转换错误]{ex.Message}";
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 原有逻辑：按 label 匹配
+                dataRows = ExcelHelper.ParseImportData(stream, fields);
+            }
         }
         catch (Exception ex)
         {
@@ -174,12 +271,19 @@ public class DynamicDataController : ControllerBase
                     errors.Add($"【{f.Label}】不能为空");
             }
 
+            // 检查转换错误
+            foreach (var kv in row)
+            {
+                if (kv.Value?.StartsWith("[转换错误]") == true)
+                    errors.Add($"【{fields.FirstOrDefault(f => f.FieldName == kv.Key)?.Label ?? kv.Key}】{kv.Value}");
+            }
+
             var status = errors.Count == 0 ? "ok" : "error";
             if (status == "ok") successCount++; else errorCount++;
 
             rows.Add(new
             {
-                rowIndex = i + 2,   // Excel 行号（第1行是标题，数据从第2行开始）
+                rowIndex = i + 2,
                 data = row,
                 status,
                 errors

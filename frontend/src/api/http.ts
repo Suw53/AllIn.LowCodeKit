@@ -1,15 +1,28 @@
-import axios from 'axios'
+import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios'
 
 // 后端API基础地址（本地.NET WebAPI）
 const BASE_URL = 'http://localhost:5000'
 
-const http = axios.create({
+/**
+ * 自定义 axios 实例接口：
+ * 拦截器已将 AxiosResponse<T> 解包为 T，
+ * 这里覆盖方法签名让 TypeScript 知道返回值直接是 T 而非 AxiosResponse<T>
+ */
+interface Http extends AxiosInstance {
+  get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
+  patch<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+}
+
+const http: Http = axios.create({
   baseURL: BASE_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
   }
-})
+}) as Http
 
 // 响应拦截器，统一处理错误
 http.interceptors.response.use(

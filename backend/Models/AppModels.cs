@@ -70,6 +70,54 @@ public class AutomationConfig
 }
 
 /// <summary>
+/// 导入模板配置，定义导入时包含哪些字段
+/// </summary>
+public class ImportTemplateConfig
+{
+    /// <summary>主键</summary>
+    public int Id { get; set; }
+
+    /// <summary>所属菜单Id</summary>
+    public int MenuId { get; set; }
+
+    /// <summary>配置名称</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>包含的字段名（JSON数组）</summary>
+    public string FieldNames { get; set; } = "[]";
+
+    /// <summary>创建时间</summary>
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    /// <summary>更新时间</summary>
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>
+/// 导入映射配置，定义Excel列与表单字段的映射关系及转换脚本
+/// </summary>
+public class ImportMappingConfig
+{
+    /// <summary>主键</summary>
+    public int Id { get; set; }
+
+    /// <summary>所属菜单Id</summary>
+    public int MenuId { get; set; }
+
+    /// <summary>映射配置名称</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>映射规则（JSON数组），每项包含 sourceColumn/targetField/transformScript</summary>
+    public string Mappings { get; set; } = "[]";
+
+    /// <summary>创建时间</summary>
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    /// <summary>更新时间</summary>
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>
 /// 全局配置项
 /// </summary>
 public class GlobalConfig
@@ -88,4 +136,25 @@ public class GlobalConfig
 
     /// <summary>描述</summary>
     public string? Description { get; set; }
+}
+
+/// <summary>
+/// 导入偏好，记忆每个模块的导入模式和上次使用的映射方案
+/// </summary>
+public class ImportPreference
+{
+    /// <summary>主键</summary>
+    public int Id { get; set; }
+
+    /// <summary>所属菜单Id（唯一）</summary>
+    public int MenuId { get; set; }
+
+    /// <summary>是否启用字段映射模式</summary>
+    public bool UseMappingEnabled { get; set; }
+
+    /// <summary>上次使用的映射配置Id（可空）</summary>
+    public int? LastMappingConfigId { get; set; }
+
+    /// <summary>更新时间</summary>
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }

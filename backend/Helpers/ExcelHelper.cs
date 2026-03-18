@@ -181,6 +181,83 @@ public static class ExcelHelper
         return result;
     }
 
+    /// <summary>
+    /// 解析Excel文件的第一行表头，返回列名列表
+    /// </summary>
+    public static List<string> ParseHeaders(Stream stream)
+    {
+        var wb = WorkbookFactory.Create(stream);
+        var sheet = wb.GetSheetAt(0);
+        if (sheet == null) return [];
+
+        var headerRow = sheet.GetRow(0);
+        if (headerRow == null) return [];
+
+        var headers = new List<string>();
+        for (int i = 0; i < headerRow.LastCellNum; i++)
+        {
+            var label = headerRow.GetCell(i)?.StringCellValue?.Trim();
+            if (!string.IsNullOrEmpty(label))
+                headers.Add(label);
+        }
+        return headers;
+    }
+
+    /// <summary>
+    /// 使用映射规则解析导入数据：sourceColumn → targetField，不做label自动匹配
+    /// </summary>
+    /// <param name="stream">Excel文件流</param>
+    /// <param name="mappings">映射规则列表，包含 sourceColumn 和 targetField</param>
+    /// <returns>解析后的数据行（key 为 targetField）</returns>
+    public static List<Dictionary<string, string?>> ParseImportDataWithMapping(
+        Stream stream, List<MappingRule> mappings)
+    {
+        var wb = WorkbookFactory.Create(stream);
+        var sheet = wb.GetSheetAt(0);
+        if (sheet == null) return [];
+
+        var headerRow = sheet.GetRow(0);
+        if (headerRow == null) return [];
+
+        // 建立 Excel列名 → 列索引 的映射
+        var headerIndexMap = new Dictionary<string, int>();
+        for (int i = 0; i < headerRow.LastCellNum; i++)
+        {
+            var label = headerRow.GetCell(i)?.StringCellValue?.Trim();
+            if (!string.IsNullOrEmpty(label))
+                headerIndexMap[label] = i;
+        }
+
+        // 建立 列索引 → (targetField, sourceColumn) 的映射
+        var columnMappings = new List<(int colIdx, string targetField, string sourceColumn)>();
+        foreach (var m in mappings)
+        {
+            if (headerIndexMap.TryGetValue(m.SourceColumn, out var colIdx))
+                columnMappings.Add((colIdx, m.TargetField, m.SourceColumn));
+        }
+
+        var result = new List<Dictionary<string, string?>>();
+        for (int r = 1; r <= sheet.LastRowNum; r++)
+        {
+            var row = sheet.GetRow(r);
+            if (row == null) continue;
+
+            var data = new Dictionary<string, string?>();
+            bool hasValue = false;
+
+            foreach (var (colIdx, targetField, _) in columnMappings)
+            {
+                var v = GetCellValue(row.GetCell(colIdx));
+                data[targetField] = v;
+                if (!string.IsNullOrWhiteSpace(v)) hasValue = true;
+            }
+
+            if (hasValue) result.Add(data);
+        }
+
+        return result;
+    }
+
     private static string? GetCellValue(ICell? cell)
     {
         if (cell == null || cell.CellType == CellType.Blank) return null;
@@ -197,4 +274,19 @@ public static class ExcelHelper
             _ => null
         };
     }
+}
+
+/// <summary>
+/// 导入映射规则，描述Excel列到表单字段的对应关系
+/// </summary>
+public class MappingRule
+{
+    /// <summary>Excel源列名</summary>
+    public string SourceColumn { get; set; } = string.Empty;
+
+    /// <summary>目标字段名</summary>
+    public string TargetField { get; set; } = string.Empty;
+
+    /// <summary>转换脚本（C#代码），null表示不转换</summary>
+    public string? TransformScript { get; set; }
 }

@@ -7,7 +7,10 @@ import {
 } from '@/api/data'
 import { getFilterSchemes, createFilterScheme, updateFilterScheme as updateFilterSchemeApi, deleteFilterScheme } from '@/api/filterScheme'
 import { getExportPreference, saveExportPreference } from '@/api/exportPreference'
-import type { DataRow, FilterCondition, FilterScheme } from '@/types'
+import { getImportTemplateConfigs, createImportTemplateConfig, updateImportTemplateConfig, deleteImportTemplateConfig } from '@/api/importTemplateConfig'
+import { getImportMappingConfigs, createImportMappingConfig, updateImportMappingConfig, deleteImportMappingConfig } from '@/api/importMappingConfig'
+import { getImportPreference, saveImportPreference } from '@/api/importPreference'
+import type { DataRow, FilterCondition, FilterScheme, ImportTemplateConfig, ImportMappingConfig, ImportPreference } from '@/types'
 
 export const useModuleStore = defineStore('module', () => {
   // ────────── 数据列表状态 ──────────
@@ -32,6 +35,14 @@ export const useModuleStore = defineStore('module', () => {
   // ────────── 当前菜单Id ──────────
   const currentMenuId = ref<number | null>(null)
 
+  // ────────── 导入模板配置 ──────────
+  const importTemplateConfigs = ref<ImportTemplateConfig[]>([])
+
+  // ────────── 导入映射配置 ──────────
+  const importMappingConfigs = ref<ImportMappingConfig[]>([])
+
+  // ────────── 导入偏好 ──────────
+  const importPreference = ref<ImportPreference | null>(null)
   /** 加载数据列表 */
   async function fetchData(menuId: number) {
     loading.value = true
@@ -141,9 +152,79 @@ export const useModuleStore = defineStore('module', () => {
     await saveExportPreference(menuId, columns)
   }
 
-  /** 下载导入模板 */
-  async function fetchTemplate(menuId: number) {
-    await downloadTemplate(menuId)
+  /** 下载导入模板（支持 configId 和自定义文件名） */
+  async function fetchTemplate(menuId: number, configId?: number, configName?: string) {
+    await downloadTemplate(menuId, configId, configName)
+  }
+
+  // ────────── 导入模板配置管理 ──────────
+
+  /** 加载导入模板配置列表 */
+  async function fetchImportTemplateConfigs(menuId: number) {
+    try {
+      importTemplateConfigs.value = await getImportTemplateConfigs(menuId)
+    } catch {
+      importTemplateConfigs.value = []
+    }
+  }
+
+  /** 保存（新建/更新）导入模板配置 */
+  async function saveImportTemplateConfig(menuId: number, data: { id?: number; name: string; fieldNames: string }) {
+    if (data.id) {
+      await updateImportTemplateConfig(data.id, { name: data.name, fieldNames: data.fieldNames })
+    } else {
+      await createImportTemplateConfig(menuId, { name: data.name, fieldNames: data.fieldNames })
+    }
+    await fetchImportTemplateConfigs(menuId)
+  }
+
+  /** 删除导入模板配置 */
+  async function removeImportTemplateConfig(id: number, menuId: number) {
+    await deleteImportTemplateConfig(id)
+    await fetchImportTemplateConfigs(menuId)
+  }
+
+  // ────────── 导入映射配置管理 ──────────
+
+  /** 加载导入映射配置列表 */
+  async function fetchImportMappingConfigs(menuId: number) {
+    try {
+      importMappingConfigs.value = await getImportMappingConfigs(menuId)
+    } catch {
+      importMappingConfigs.value = []
+    }
+  }
+
+  /** 保存（新建/更新）映射配置 */
+  async function saveImportMappingConfig(menuId: number, data: { id?: number; name: string; mappings: string }) {
+    if (data.id) {
+      await updateImportMappingConfig(data.id, { name: data.name, mappings: data.mappings })
+    } else {
+      await createImportMappingConfig(menuId, { name: data.name, mappings: data.mappings })
+    }
+    await fetchImportMappingConfigs(menuId)
+  }
+
+  /** 删除映射配置 */
+  async function removeImportMappingConfig(id: number, menuId: number) {
+    await deleteImportMappingConfig(id)
+    await fetchImportMappingConfigs(menuId)
+  }
+
+  // ────────── 导入偏好管理 ──────────
+
+  /** 加载导入偏好 */
+  async function fetchImportPreference(menuId: number) {
+    try {
+      importPreference.value = await getImportPreference(menuId)
+    } catch {
+      importPreference.value = null
+    }
+  }
+
+  /** 保存导入偏好 */
+  async function saveImportPref(menuId: number, useMappingEnabled: boolean, lastMappingConfigId: number | null) {
+    importPreference.value = await saveImportPreference(menuId, { useMappingEnabled, lastMappingConfigId })
   }
 
   /** 导出当前筛选结果为 Excel */
@@ -177,17 +258,24 @@ export const useModuleStore = defineStore('module', () => {
     batchIds.value = []
     currentBatchId.value = ''
     currentMenuId.value = null
+    importTemplateConfigs.value = []
+    importMappingConfigs.value = []
+    importPreference.value = null
   }
 
   return {
     rows, total, loading, page, pageSize, keyword, activeFilters,
     filterSchemes, exportColumns, currentMenuId,
     batchIds, currentBatchId,
+    importTemplateConfigs, importMappingConfigs, importPreference,
     fetchData, addRow, editRow, removeRow, batchRemoveRows,
     fetchBatchIds,
     fetchFilterSchemes, saveFilterScheme, updateFilterScheme, removeFilterScheme, applyScheme,
     fetchExportPreference, saveExportColumns,
     fetchTemplate, exportToExcel, importConfirm,
+    fetchImportTemplateConfigs, saveImportTemplateConfig, removeImportTemplateConfig,
+    fetchImportMappingConfigs, saveImportMappingConfig, removeImportMappingConfig,
+    fetchImportPreference, saveImportPref,
     reset
   }
 })

@@ -31,6 +31,15 @@ public class AppDbContext : DbContext
     /// <summary>全局配置表</summary>
     public DbSet<GlobalConfig> GlobalConfigs { get; set; }
 
+    /// <summary>导入模板配置表</summary>
+    public DbSet<ImportTemplateConfig> ImportTemplateConfigs { get; set; }
+
+    /// <summary>导入映射配置表</summary>
+    public DbSet<ImportMappingConfig> ImportMappingConfigs { get; set; }
+
+    /// <summary>导入偏好表</summary>
+    public DbSet<ImportPreference> ImportPreferences { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

@@ -93,3 +93,46 @@ export interface ExportPreference {
   updatedAt: string
 }
 
+// ────────── Phase 5：Excel导入导出增强 ──────────
+
+/** 导入模板配置，定义导入时包含哪些字段 */
+export interface ImportTemplateConfig {
+  id: number
+  menuId: number
+  name: string
+  /** 包含的字段名，JSON 数组字符串 */
+  fieldNames: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 单条映射规则 */
+export interface MappingItem {
+  /** Excel源列名 */
+  sourceColumn: string
+  /** 目标表单字段名 */
+  targetField: string
+  /** 转换脚本（C#代码），null 表示不转换 */
+  transformScript: string | null
+}
+
+/** 导入映射配置，定义Excel列与表单字段的映射关系 */
+export interface ImportMappingConfig {
+  id: number
+  menuId: number
+  name: string
+  /** 映射规则，JSON 数组字符串（MappingItem[]） */
+  mappings: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 导入偏好，记忆导入模式和上次映射方案 */
+export interface ImportPreference {
+  id: number
+  menuId: number
+  useMappingEnabled: boolean
+  lastMappingConfigId: number | null
+  updatedAt: string
+}
+

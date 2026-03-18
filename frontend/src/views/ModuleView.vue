@@ -7,12 +7,13 @@ import { useMenuStore } from '@/stores/menuStore'
 import { useModuleStore } from '@/stores/moduleStore'
 import { useFormTemplateStore } from '@/stores/formTemplateStore'
 import { useTabStore } from '@/stores/tabStore'
-import { previewImport } from '@/api/data'
 import { withLoading } from '@/utils/loading'
 import DataForm from '@/components/DataForm.vue'
 import DataFilter from '@/components/DataFilter.vue'
 import ImportPreviewDialog from '@/components/ImportPreviewDialog.vue'
 import BatchHistoryDialog from '@/components/BatchHistoryDialog.vue'
+import ImportTemplateConfigDialog from '@/components/ImportTemplateConfigDialog.vue'
+import ImportExcelDialog from '@/components/ImportExcelDialog.vue'
 import type { DataRow, FilterCondition } from '@/types'
 import type { PreviewRow } from '@/api/data'
 
@@ -62,7 +63,10 @@ async function loadModule(id: number) {
     await Promise.all([
       store.fetchBatchIds(id),
       store.fetchFilterSchemes(id),
-      store.fetchExportPreference(id)
+      store.fetchExportPreference(id),
+      store.fetchImportTemplateConfigs(id),
+      store.fetchImportMappingConfigs(id),
+      store.fetchImportPreference(id)
     ])
     await store.fetchData(id)
   }
@@ -242,12 +246,42 @@ async function onPageSizeChange(ps: number) {
   await withLoading(() => store.fetchData(menuId.value), '加载中…')
 }
 
-// ────────── 模板下载 ──────────
+// ────────── 导入模板配置管理 ──────────
+const importTemplateDialogVisible = ref(false)
+
+// ────────── 模板下载（支持配置选择） ──────────
 const templateDownloading = ref(false)
+const templateSelectVisible = ref(false)
+const selectedTemplateConfigId = ref<number | undefined>(undefined)
+
 async function handleDownloadTemplate() {
+  const configs = store.importTemplateConfigs
+  if (configs.length > 0) {
+    // 有配置时弹出选择对话框
+    templateSelectVisible.value = true
+  } else {
+    // 无配置，直接下载默认模板
+    await doDownloadTemplate(undefined, '默认模板')
+  }
+}
+
+async function confirmTemplateDownload() {
+  const configs = store.importTemplateConfigs
+  let configName = '默认模板'
+
+  if (selectedTemplateConfigId.value) {
+    const cfg = configs.find(c => c.id === selectedTemplateConfigId.value)
+    configName = cfg?.name || '自定义模板'
+  }
+
+  templateSelectVisible.value = false
+  await doDownloadTemplate(selectedTemplateConfigId.value, configName)
+}
+
+async function doDownloadTemplate(configId: number | undefined, configName: string) {
   templateDownloading.value = true
   try {
-    await withLoading(() => store.fetchTemplate(menuId.value), '下载中…')
+    await withLoading(() => store.fetchTemplate(menuId.value, configId, configName), '下载中…')
   } catch {
     ElMessage.error('模板下载失败')
   } finally {
@@ -255,46 +289,17 @@ async function handleDownloadTemplate() {
   }
 }
 
-// ────────── Excel 导入（两步：预览 → 确认） ──────────
-const importInputRef = ref<HTMLInputElement>()
-const previewing = ref(false)
+// ────────── Excel 导入（统一对话框） ──────────
+const importExcelDialogVisible = ref(false)
 const previewVisible = ref(false)
 const previewRows = ref<PreviewRow[]>([])
 const previewBatchId = ref('')
 const confirming = ref(false)
 
-function triggerImport() {
-  importInputRef.value?.click()
-}
-
-/** 生成批次号：BATCH-YYYYMMDD-HHmmss */
-function generateBatchId(): string {
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
-  const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
-  return `BATCH-${date}-${time}`
-}
-
-async function handleImportFile(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  ;(e.target as HTMLInputElement).value = ''
-
-  previewing.value = true
-  try {
-    const result = await withLoading(
-      () => previewImport(menuId.value, file),
-      '解析文件中…'
-    )
-    previewRows.value = result.rows
-    previewBatchId.value = generateBatchId()
-    previewVisible.value = true
-  } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '文件解析失败')
-  } finally {
-    previewing.value = false
-  }
+function handleImportPreview(rows: PreviewRow[], batchId: string) {
+  previewRows.value = rows
+  previewBatchId.value = batchId
+  previewVisible.value = true
 }
 
 async function handleConfirmImport() {
@@ -395,15 +400,18 @@ async function handleExport() {
 
         <!-- 导入/导出下拉 -->
         <el-dropdown trigger="click">
-          <el-button size="small" icon="Document" :loading="previewing || templateDownloading">
+          <el-button size="small" icon="Document" :loading="templateDownloading">
             模板/导入/导出 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item @click="importTemplateDialogVisible = true">
+                <el-icon><Setting /></el-icon> 管理导入模板
+              </el-dropdown-item>
               <el-dropdown-item @click="handleDownloadTemplate">
                 <el-icon><Download /></el-icon> 下载导入模板
               </el-dropdown-item>
-              <el-dropdown-item @click="triggerImport">
+              <el-dropdown-item divided @click="importExcelDialogVisible = true">
                 <el-icon><Upload /></el-icon> 导入 Excel
               </el-dropdown-item>
               <el-dropdown-item @click="openExport">
@@ -416,15 +424,6 @@ async function handleExport() {
         <el-button size="small" icon="Setting" @click="router.push(`/automation/${menuId}`)">自动化</el-button>
       </div>
     </div>
-
-    <!-- 隐藏的文件输入（导入） -->
-    <input
-      ref="importInputRef"
-      type="file"
-      accept=".xlsx,.xls"
-      style="display:none"
-      @change="handleImportFile"
-    />
 
     <!-- ── 初始化骨架屏 ── -->
     <div v-if="templateStore.loading" class="page-loading">
@@ -566,6 +565,29 @@ async function handleExport() {
       @view-batch="handleViewBatch"
     />
 
+    <!-- ── 模板选择对话框 ── -->
+    <el-dialog v-model="templateSelectVisible" title="选择导入模板" width="400px">
+      <el-select
+        v-model="selectedTemplateConfigId"
+        placeholder="请选择模板配置"
+        filterable
+        clearable
+        style="width: 100%;"
+      >
+        <el-option label="全部字段（默认模板）" :value="undefined" />
+        <el-option
+          v-for="cfg in store.importTemplateConfigs"
+          :key="cfg.id"
+          :label="cfg.name"
+          :value="cfg.id"
+        />
+      </el-select>
+      <template #footer>
+        <el-button @click="templateSelectVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmTemplateDownload">下载</el-button>
+      </template>
+    </el-dialog>
+
     <!-- ── 导出列选择对话框 ── -->
     <el-dialog v-model="exportVisible" title="选择导出列" width="400px">
       <el-checkbox-group v-model="exportSelected" class="export-checkbox-group">
@@ -582,6 +604,22 @@ async function handleExport() {
         <el-button type="primary" :loading="exporting" @click="handleExport">导出 Excel</el-button>
       </template>
     </el-dialog>
+
+    <!-- ── 导入模板配置管理对话框 ── -->
+    <ImportTemplateConfigDialog
+      v-model:visible="importTemplateDialogVisible"
+      :menu-id="menuId"
+      :fields="sortedFields"
+      @change="store.fetchImportTemplateConfigs(menuId)"
+    />
+
+    <!-- ── 统一导入对话框 ── -->
+    <ImportExcelDialog
+      v-model:visible="importExcelDialogVisible"
+      :menu-id="menuId"
+      :fields="sortedFields"
+      @preview="handleImportPreview"
+    />
 
   </div>
 </template>

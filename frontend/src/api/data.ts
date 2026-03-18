@@ -1,5 +1,5 @@
 import http, { downloadFile } from './http'
-import type { DataRow, FilterCondition, PageResult } from '@/types'
+import type { DataRow, FilterCondition, MappingItem, PageResult } from '@/types'
 
 export interface DataQueryParams {
   page?: number
@@ -114,11 +114,19 @@ export const deleteRow = (menuId: number, rowId: number) =>
   http.delete(`/api/menus/${menuId}/data/${rowId}`)
 
 /**
- * 下载 Excel 导入模板
- * GET /api/menus/{menuId}/data/template
+ * 下载 Excel 导入模板，支持可选的导入模板配置ID和自定义文件名
+ * GET /api/menus/{menuId}/data/template?configId={id}&configName={name}
  */
-export const downloadTemplate = (menuId: number) =>
-  downloadFile(`/api/menus/${menuId}/data/template`, undefined, '导入模板.xlsx')
+export const downloadTemplate = (menuId: number, configId?: number, configName?: string) => {
+  const params: Record<string, unknown> = {}
+  if (configId) params.configId = configId
+  if (configName) params.configName = configName
+  return downloadFile(
+    `/api/menus/${menuId}/data/template`,
+    Object.keys(params).length ? params : undefined,
+    '导入模板.xlsx'
+  )
+}
 
 /**
  * 导出当前筛选结果为 Excel（全量）
@@ -134,3 +142,36 @@ export const exportExcel = (
     columns: params.columns?.length ? JSON.stringify(params.columns) : undefined,
     batchId: params.batchId || undefined
   }, '导出数据.xlsx')
+
+/**
+ * 上传Excel文件仅解析表头列名
+ * POST /api/menus/{menuId}/data/import/headers
+ */
+export const parseExcelHeaders = (menuId: number, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return http.post<{ headers: string[] }>(
+    `/api/menus/${menuId}/data/import/headers`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+}
+
+/**
+ * 使用映射规则预览导入数据
+ * POST /api/menus/{menuId}/data/import/preview （带 mappings 字段）
+ */
+export const previewImportWithMapping = (
+  menuId: number,
+  file: File,
+  mappings: MappingItem[]
+) => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('mappings', JSON.stringify(mappings))
+  return http.post<ImportPreviewResult>(
+    `/api/menus/${menuId}/data/import/preview`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+}

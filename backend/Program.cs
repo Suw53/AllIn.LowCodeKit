@@ -20,6 +20,9 @@ builder.Services.AddSingleton<DynamicDataService>();
 // 注册 Roslyn 脚本执行引擎
 builder.Services.AddSingleton<RoslynScriptEngine>();
 
+// 注册导入转换脚本服务
+builder.Services.AddSingleton<ImportTransformService>();
+
 // 配置SQLite数据库
 var dbPath = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -41,7 +44,8 @@ builder.Services.AddCors(options =>
                 "https://tauri.localhost"  // Tauri生产模式备用
             )
             .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowAnyHeader()
+            .WithExposedHeaders("Content-Disposition");
     });
 });
 
