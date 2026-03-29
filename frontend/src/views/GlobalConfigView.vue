@@ -1,12 +1,16 @@
 <!-- 全局配置页：登录方案 / Playwright路径 / 个性化主题 -->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getConfigs, setConfig, deleteConfig } from '@/api/globalConfig'
 import { useThemeStore, THEME_VARS } from '@/stores/themeStore'
+import { useAppConfigStore } from '@/stores/appConfigStore'
 
-const activeTab = ref('login')
+const route = useRoute()
+const activeTab = ref((route.query.tab as string) || 'login')
 const themeStore = useThemeStore()
+const appConfigStore = useAppConfigStore()
 
 // ────────── 登录方案 ──────────
 interface LoginScheme {
@@ -123,6 +127,69 @@ function handleResetTheme() {
   themeStore.resetToDefault()
 }
 
+// ────────── 应用设置 ──────────
+const appSaving = ref(false)
+
+async function handleSaveApp() {
+  appSaving.value = true
+  try {
+    await appConfigStore.saveAppConfig()
+    ElMessage.success('应用设置已保存')
+  } catch {
+    ElMessage.error('保存失败')
+  } finally {
+    appSaving.value = false
+  }
+}
+
+function handleLogoChange(file: any) {
+  console.log('Logo 文件选择触发:', file)
+  const rawFile = file.raw
+  if (!rawFile) {
+    console.error('无法获取文件对象')
+    return
+  }
+  if (rawFile.size > 500 * 1024) {
+    ElMessage.warning('图片大小不能超过 500KB')
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const result = e.target?.result as string
+    appConfigStore.config.logo = result
+    console.log('Logo 已读取，长度:', result.length, '预览:', result.substring(0, 50) + '...')
+  }
+  reader.onerror = () => {
+    console.error('图片读取失败')
+    ElMessage.error('图片读取失败')
+  }
+  reader.readAsDataURL(rawFile)
+}
+
+function handleFaviconChange(file: any) {
+  console.log('Favicon 文件选择触发:', file)
+  const rawFile = file.raw
+  if (!rawFile) {
+    console.error('无法获取文件对象')
+    return
+  }
+  if (rawFile.size > 500 * 1024) {
+    ElMessage.warning('图片大小不能超过 500KB')
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const result = e.target?.result as string
+    appConfigStore.config.favicon = result
+    console.log('Favicon 已读取，长度:', result.length, '预览:', result.substring(0, 50) + '...')
+  }
+  reader.onerror = () => {
+    console.error('图片读取失败')
+    ElMessage.error('图片读取失败')
+  }
+  reader.readAsDataURL(rawFile)
+}
+
 // ────────── 初始化 ──────────
 onMounted(async () => {
   await Promise.all([loadLoginSchemes(), loadPlaywrightConfig()])
@@ -138,8 +205,15 @@ onMounted(async () => {
     <div class="config-body">
       <el-tabs v-model="activeTab" tab-position="left" class="config-tabs">
 
+        <!-- 自动化配置分组 -->
+        <el-tab-pane disabled>
+          <template #label>
+            <span style="font-weight: 600; color: #909399; font-size: 12px;">自动化配置</span>
+          </template>
+        </el-tab-pane>
+
         <!-- ── 登录配置 ── -->
-        <el-tab-pane label="登录配置" name="login">
+        <el-tab-pane label="  登录配置" name="login">
           <div class="tab-content">
             <div class="section-header">
               <span class="section-title">登录方案</span>
@@ -169,7 +243,7 @@ onMounted(async () => {
         </el-tab-pane>
 
         <!-- ── Playwright 配置 ── -->
-        <el-tab-pane label="Playwright" name="playwright">
+        <el-tab-pane label="  Playwright" name="playwright">
           <div class="tab-content">
             <div class="section-header">
               <span class="section-title">Playwright 路径配置</span>
@@ -200,9 +274,68 @@ onMounted(async () => {
           </div>
         </el-tab-pane>
 
-        <!-- ── 个性化主题 ── -->
-        <el-tab-pane label="个性化" name="theme">
+        <!-- 系统配置分组 -->
+        <el-tab-pane disabled>
+          <template #label>
+            <span style="font-weight: 600; color: #909399; font-size: 12px;">系统配置</span>
+          </template>
+        </el-tab-pane>
+
+        <!-- ── 个性化 ── -->
+        <el-tab-pane label="  个性化" name="theme">
           <div class="tab-content">
+
+            <!-- 应用设置 -->
+            <div class="section-header">
+              <span class="section-title">应用设置</span>
+              <el-button type="primary" size="small" :loading="appSaving" @click="handleSaveApp">保存设置</el-button>
+            </div>
+            <p class="section-desc">配置网站标题、Logo 和图标。</p>
+
+            <el-form label-width="120px" style="max-width: 600px; margin-bottom: 32px;">
+              <el-form-item label="网站标题">
+                <el-input v-model="appConfigStore.config.title" placeholder="AllIn LowCode Kit" clearable />
+              </el-form-item>
+              <el-form-item label="侧边栏名称">
+                <el-input v-model="appConfigStore.config.sidebarName" placeholder="AllIn LowCode Kit" clearable />
+              </el-form-item>
+              <el-form-item label="Logo 图片">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <el-upload
+                    :auto-upload="false"
+                    :show-file-list="false"
+                    accept="image/png,image/jpeg,image/svg+xml"
+                    :on-change="handleLogoChange"
+                  >
+                    <el-button size="small">选择图片</el-button>
+                  </el-upload>
+                  <div v-if="appConfigStore.config.logo" style="display: flex; align-items: center; gap: 8px;">
+                    <img :src="appConfigStore.config.logo" style="height: 40px; max-width: 200px; object-fit: contain; border: 1px solid #dcdfe6; border-radius: 4px; padding: 4px;" />
+                    <el-button size="small" text type="danger" @click="appConfigStore.config.logo = ''">清除</el-button>
+                  </div>
+                  <span v-else style="font-size: 12px; color: #909399;">未上传（支持 PNG、JPG、SVG，大小不超过 500KB）</span>
+                </div>
+              </el-form-item>
+              <el-form-item label="Favicon 图标">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <el-upload
+                    :auto-upload="false"
+                    :show-file-list="false"
+                    accept="image/png,image/jpeg,image/x-icon"
+                    :on-change="handleFaviconChange"
+                  >
+                    <el-button size="small">选择图标</el-button>
+                  </el-upload>
+                  <div v-if="appConfigStore.config.favicon" style="display: flex; align-items: center; gap: 8px;">
+                    <img :src="appConfigStore.config.favicon" style="height: 32px; max-width: 200px; object-fit: contain; border: 1px solid #dcdfe6; border-radius: 4px; padding: 4px;" />
+                    <el-button size="small" text type="danger" @click="appConfigStore.config.favicon = ''">清除</el-button>
+                  </div>
+                  <span v-else style="font-size: 12px; color: #909399;">未上传（支持 PNG、JPG、ICO，大小不超过 500KB）</span>
+                </div>
+              </el-form-item>
+            </el-form>
+
+            <!-- 主题颜色 -->
             <div class="section-header">
               <span class="section-title">主题颜色</span>
               <div style="display: flex; gap: 8px;">

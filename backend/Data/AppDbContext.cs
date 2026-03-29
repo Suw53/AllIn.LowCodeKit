@@ -63,8 +63,9 @@ public class AppDbContext : DbContext
             .HasIndex(g => new { g.Category, g.Key })
             .IsUnique();
 
-        // 种子数据：默认全局配置一级菜单
+        // 种子数据：默认全局配置菜单
         modelBuilder.Entity<Menu>().HasData(
+            // 一级菜单：全局配置
             new Menu
             {
                 Id = 1,
@@ -74,6 +75,28 @@ public class AppDbContext : DbContext
                 Sort = 9999,
                 IsSystem = true,
                 CreatedAt = new DateTime(2026, 3, 15)
+            },
+            // 二级菜单：自动化配置
+            new Menu
+            {
+                Id = 100,
+                ParentId = 1,
+                Name = "自动化配置",
+                Icon = "Connection",
+                Sort = 1,
+                IsSystem = true,
+                CreatedAt = new DateTime(2026, 3, 29)
+            },
+            // 二级菜单：系统配置
+            new Menu
+            {
+                Id = 101,
+                ParentId = 1,
+                Name = "系统配置",
+                Icon = "Tools",
+                Sort = 2,
+                IsSystem = true,
+                CreatedAt = new DateTime(2026, 3, 29)
             }
         );
     }

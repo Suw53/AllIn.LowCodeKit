@@ -29,6 +29,16 @@ const router = createRouter({
       component: () => import('@/views/GlobalConfigView.vue')
     },
     {
+      path: '/global-config/automation',
+      name: 'AutomationConfig',
+      component: () => import('@/views/AutomationConfigView.vue')
+    },
+    {
+      path: '/global-config/system',
+      name: 'SystemConfig',
+      component: () => import('@/views/SystemConfigView.vue')
+    },
+    {
       path: '/automation/:menuId',
       name: 'Automation',
       component: () => import('@/views/AutomationView.vue')

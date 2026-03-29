@@ -3,6 +3,7 @@ using System;
 using AllIn.LowCodeKit.Backend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AllIn.LowCodeKit.Backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260329063556_SimplifyGlobalConfigMenus")]
+    partial class SimplifyGlobalConfigMenus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
@@ -320,23 +323,33 @@ namespace AllIn.LowCodeKit.Backend.Migrations
                         },
                         new
                         {
-                            Id = 100,
+                            Id = 102,
                             CreatedAt = new DateTime(2026, 3, 29, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            Icon = "Connection",
+                            Icon = "User",
                             IsSystem = true,
-                            Name = "自动化配置",
+                            Name = "登录配置",
                             ParentId = 1,
                             Sort = 1
                         },
                         new
                         {
-                            Id = 101,
+                            Id = 103,
                             CreatedAt = new DateTime(2026, 3, 29, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            Icon = "Tools",
+                            Icon = "Monitor",
                             IsSystem = true,
-                            Name = "系统配置",
+                            Name = "Playwright",
                             ParentId = 1,
                             Sort = 2
+                        },
+                        new
+                        {
+                            Id = 104,
+                            CreatedAt = new DateTime(2026, 3, 29, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            Icon = "Brush",
+                            IsSystem = true,
+                            Name = "个性化",
+                            ParentId = 1,
+                            Sort = 3
                         });
                 });
 

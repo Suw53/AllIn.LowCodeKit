@@ -4,12 +4,14 @@ import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useMenuStore, type MenuItem } from '@/stores/menuStore'
 import { useTabStore } from '@/stores/tabStore'
+import { useAppConfigStore } from '@/stores/appConfigStore'
 import ContextMenu from '@/components/ContextMenu.vue'
 import IconPicker from '@/components/IconPicker.vue'
 
 const router = useRouter()
 const menuStore = useMenuStore()
 const tabStore = useTabStore()
+const appConfigStore = useAppConfigStore()
 const collapsed = ref(false)
 const sidebarRef = ref<HTMLElement>()
 
@@ -196,7 +198,7 @@ async function doDelete(menu: MenuItem) {
 
 // ────────── 导航 ──────────
 function navigate(menu: MenuItem) {
-  // 找到父菜单名用于Tab标题
+  // 构建Tab标题
   let tabTitle = menu.name
   for (const m of menuStore.menuList) {
     if (m.children.some(c => c.id === menu.id)) {
@@ -206,8 +208,18 @@ function navigate(menu: MenuItem) {
   }
 
   if (menu.isSystem) {
-    tabStore.openTab('/global-config', '全局配置')
-    router.push('/global-config')
+    // 全局配置的二级菜单，根据名称跳转到对应页面
+    if (menu.name === '自动化配置') {
+      tabStore.openTab('/global-config/automation', tabTitle)
+      router.push('/global-config/automation')
+    } else if (menu.name === '系统配置') {
+      tabStore.openTab('/global-config/system', tabTitle)
+      router.push('/global-config/system')
+    } else {
+      // 兼容旧的菜单名称
+      tabStore.openTab('/global-config', tabTitle)
+      router.push('/global-config')
+    }
   } else {
     const path = `/module/${menu.id}`
     tabStore.openTab(path, tabTitle)
@@ -221,8 +233,14 @@ function navigate(menu: MenuItem) {
 
     <!-- Logo -->
     <div class="logo">
-      <el-icon v-if="collapsed" :size="20"><Grid /></el-icon>
-      <span v-else>AllIn LowCode Kit</span>
+      <template v-if="collapsed">
+        <img v-if="appConfigStore.config.logo" :src="appConfigStore.config.logo" class="logo-img-small" />
+        <el-icon v-else :size="20"><Grid /></el-icon>
+      </template>
+      <template v-else>
+        <img v-if="appConfigStore.config.logo" :src="appConfigStore.config.logo" class="logo-img" />
+        <span>{{ appConfigStore.config.sidebarName }}</span>
+      </template>
     </div>
 
     <!-- 加载骨架屏 -->
@@ -245,10 +263,6 @@ function navigate(menu: MenuItem) {
         <el-sub-menu :index="String(menu.id)">
           <template #title>
             <el-icon><component :is="menu.icon || 'Folder'" /></el-icon>
-            <!--
-              span 携带 data 属性：右键检测时通过 closest/querySelector 定位
-              不能用 div（会破坏 el-sub-menu__title 的 flex 布局）
-            -->
             <span :data-ctx-id="menu.id" :data-ctx-level="1">{{ menu.name }}</span>
           </template>
 
@@ -336,12 +350,25 @@ function navigate(menu: MenuItem) {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   background: #002140;
   color: #fff;
   font-size: 14px;
   font-weight: bold;
   white-space: nowrap;
   overflow: hidden;
+}
+
+.logo-img {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+}
+
+.logo-img-small {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
 }
 
 .collapse-btn {
