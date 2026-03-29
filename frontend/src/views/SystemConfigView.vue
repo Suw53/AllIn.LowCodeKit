@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import type { UploadFile, UploadFiles } from 'element-plus'
 import { useThemeStore, THEME_VARS } from '@/stores/themeStore'
 import { useAppConfigStore } from '@/stores/appConfigStore'
 
@@ -10,6 +11,8 @@ const appConfigStore = useAppConfigStore()
 
 // ────────── 应用设置 ──────────
 const appSaving = ref(false)
+const logoFileName = ref('')
+const faviconFileName = ref('')
 
 async function handleSaveApp() {
   appSaving.value = true
@@ -23,31 +26,76 @@ async function handleSaveApp() {
   }
 }
 
-function handleLogoUpload(file: File) {
+function validateImageFile(file: File) {
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return false
+  }
   if (file.size > 500 * 1024) {
     ElMessage.warning('图片大小不能超过 500KB')
     return false
   }
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    appConfigStore.config.logo = e.target?.result as string
-  }
-  reader.readAsDataURL(file)
-  return false
+  return true
 }
 
-function handleFaviconUpload(file: File) {
-  if (file.size > 500 * 1024) {
-    ElMessage.warning('图片大小不能超过 500KB')
-    return false
-  }
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    appConfigStore.config.favicon = e.target?.result as string
-  }
-  reader.readAsDataURL(file)
-  return false
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => resolve((e.target?.result as string) || '')
+    reader.onerror = () => reject(new Error('图片读取失败'))
+    reader.readAsDataURL(file)
+  })
 }
+
+async function handleLogoChange(uploadFile: UploadFile, _uploadFiles: UploadFiles) {
+  const rawFile = uploadFile.raw
+  if (!rawFile || !validateImageFile(rawFile)) {
+    return
+  }
+  try {
+    appConfigStore.config.logo = await readFileAsDataUrl(rawFile)
+    logoFileName.value = rawFile.name
+  } catch {
+    ElMessage.error('Logo 图片读取失败')
+  }
+}
+
+async function handleFaviconChange(uploadFile: UploadFile, _uploadFiles: UploadFiles) {
+  const rawFile = uploadFile.raw
+  if (!rawFile || !validateImageFile(rawFile)) {
+    return
+  }
+  try {
+    appConfigStore.config.favicon = await readFileAsDataUrl(rawFile)
+    faviconFileName.value = rawFile.name
+    // 选择后立即应用，用户可以立刻看到标签图标变化。
+    appConfigStore.applyFavicon()
+  } catch {
+    ElMessage.error('Favicon 图标读取失败')
+  }
+}
+
+function clearLogo() {
+  appConfigStore.config.logo = ''
+  logoFileName.value = ''
+}
+
+function clearFavicon() {
+  appConfigStore.config.favicon = ''
+  faviconFileName.value = ''
+  appConfigStore.applyFavicon()
+}
+
+function syncFileNamesFromConfig() {
+  if (!logoFileName.value && appConfigStore.config.logo) {
+    logoFileName.value = '已保存的 Logo'
+  }
+  if (!faviconFileName.value && appConfigStore.config.favicon) {
+    faviconFileName.value = '已保存的 Favicon'
+  }
+}
+
+syncFileNamesFromConfig()
 
 // ────────── 主题颜色 ──────────
 const themeSaving = ref(false)
@@ -92,32 +140,56 @@ function handleResetTheme() {
             <el-input v-model="appConfigStore.config.sidebarName" placeholder="AllIn LowCode Kit" clearable />
           </el-form-item>
           <el-form-item label="Logo 图片">
-            <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="upload-row">
               <el-upload
                 :auto-upload="false"
                 :show-file-list="false"
                 accept="image/png,image/jpeg,image/svg+xml"
-                :before-upload="handleLogoUpload"
+                @change="handleLogoChange"
               >
                 <el-button size="small">选择图片</el-button>
               </el-upload>
-              <img v-if="appConfigStore.config.logo" :src="appConfigStore.config.logo" style="height: 40px;" />
-              <span v-else style="font-size: 12px; color: #909399;">未上传</span>
+              <el-button
+                v-if="appConfigStore.config.logo"
+                size="small"
+                link
+                type="danger"
+                @click="clearLogo"
+              >
+                清除
+              </el-button>
+              <div class="upload-preview">
+                <img v-if="appConfigStore.config.logo" :src="appConfigStore.config.logo" class="logo-preview" />
+                <span v-else class="upload-empty">未上传</span>
+                <span v-if="logoFileName" class="upload-name">{{ logoFileName }}</span>
+              </div>
             </div>
             <div class="form-hint">支持 PNG、JPG、SVG，大小不超过 500KB</div>
           </el-form-item>
           <el-form-item label="Favicon 图标">
-            <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="upload-row">
               <el-upload
                 :auto-upload="false"
                 :show-file-list="false"
-                accept="image/png,image/jpeg,image/x-icon"
-                :before-upload="handleFaviconUpload"
+                accept="image/png,image/jpeg,image/x-icon,image/svg+xml"
+                @change="handleFaviconChange"
               >
                 <el-button size="small">选择图标</el-button>
               </el-upload>
-              <img v-if="appConfigStore.config.favicon" :src="appConfigStore.config.favicon" style="height: 32px;" />
-              <span v-else style="font-size: 12px; color: #909399;">未上传</span>
+              <el-button
+                v-if="appConfigStore.config.favicon"
+                size="small"
+                link
+                type="danger"
+                @click="clearFavicon"
+              >
+                清除
+              </el-button>
+              <div class="upload-preview">
+                <img v-if="appConfigStore.config.favicon" :src="appConfigStore.config.favicon" class="favicon-preview" />
+                <span v-else class="upload-empty">未上传</span>
+                <span v-if="faviconFileName" class="upload-name">{{ faviconFileName }}</span>
+              </div>
             </div>
             <div class="form-hint">支持 PNG、JPG、ICO，大小不超过 500KB</div>
           </el-form-item>
@@ -220,6 +292,52 @@ function handleResetTheme() {
   font-size: 11px;
   color: #909399;
   margin-top: 4px;
+}
+
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.upload-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.logo-preview {
+  height: 40px;
+  max-width: 160px;
+  object-fit: contain;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  padding: 4px;
+}
+
+.favicon-preview {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  padding: 4px;
+}
+
+.upload-empty {
+  font-size: 12px;
+  color: #909399;
+}
+
+.upload-name {
+  font-size: 12px;
+  color: #606266;
+  max-width: 220px;
+  word-break: break-all;
 }
 
 .theme-grid {

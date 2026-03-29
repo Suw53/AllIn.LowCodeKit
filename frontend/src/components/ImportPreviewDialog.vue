@@ -19,6 +19,10 @@ const emit = defineEmits<{
 
 const successCount = computed(() => props.rows.filter(r => r.status === 'ok').length)
 const errorCount = computed(() => props.rows.filter(r => r.status === 'error').length)
+
+function getRowClassName({ row }: { row: PreviewRow }) {
+  return row.status === 'error' ? 'row-error' : 'row-ok'
+}
 </script>
 
 <template>
@@ -50,7 +54,7 @@ const errorCount = computed(() => props.rows.filter(r => r.status === 'error').l
         border
         size="small"
         :max-height="400"
-        :row-class-name="({ row }) => row.status === 'error' ? 'row-error' : 'row-ok'"
+        :row-class-name="getRowClassName"
       >
         <!-- 行号 -->
         <el-table-column label="行号" prop="rowIndex" width="60" fixed="left" align="center" />

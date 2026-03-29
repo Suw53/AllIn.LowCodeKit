@@ -3,8 +3,9 @@
   "tasks": [
     {
       "label": "启动后端",
-      "type": "shell",
-      "command": "dotnet run",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run"],
       "options": {
         "cwd": "${workspaceFolder}/backend"
       },
@@ -28,8 +29,9 @@
     },
     {
       "label": "启动前端",
-      "type": "shell",
-      "command": "npm run dev",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "dev"],
       "options": {
         "cwd": "${workspaceFolder}/frontend"
       },

@@ -3,7 +3,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getConfigs, setConfig, deleteConfig } from '@/api/globalConfig'
+import { getConfigs, setConfig } from '@/api/globalConfig'
 import { useThemeStore, THEME_VARS } from '@/stores/themeStore'
 import { useAppConfigStore } from '@/stores/appConfigStore'
 

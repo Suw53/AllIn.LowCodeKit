@@ -1,6 +1,6 @@
 <!-- 表单字段行组件：支持展开/收起属性表单、拖拽排序（外部由 vuedraggable 提供 handle） -->
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import type { FormField } from '@/types'
 
 // ────────── Props / Emits ──────────

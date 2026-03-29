@@ -25,8 +25,11 @@ const router = createRouter({
     },
     {
       path: '/global-config',
-      name: 'GlobalConfig',
-      component: () => import('@/views/GlobalConfigView.vue')
+      redirect: (to) => {
+        const tab = Array.isArray(to.query.tab) ? to.query.tab[0] : to.query.tab
+        if (tab === 'login' || tab === 'playwright') return '/global-config/automation'
+        return '/global-config/system'
+      }
     },
     {
       path: '/global-config/automation',

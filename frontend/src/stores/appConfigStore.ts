@@ -70,9 +70,14 @@ export const useAppConfigStore = defineStore('appConfig', () => {
 
   /** 应用 Favicon 到页面 */
   function applyFavicon() {
-    if (!config.value.favicon) return
-
     let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement
+    if (!config.value.favicon) {
+      if (link) {
+        link.href = '/favicon.svg'
+      }
+      return
+    }
+
     if (!link) {
       link = document.createElement('link')
       link.rel = 'icon'

@@ -51,7 +51,7 @@
             <div
               class="connector-dot right-dot"
               :ref="el => setLeftDotRef(header, el)"
-              @mousedown.prevent="startDrag(header, 'source', $event)"
+              @mousedown.prevent="startDrag(header, 'source')"
             />
           </div>
         </div>
@@ -60,7 +60,6 @@
       <!-- 中间：SVG连线区 -->
       <div class="mapping-svg-area" ref="svgAreaRef">
         <svg
-          ref="svgRef"
           class="mapping-svg"
           @mousemove="onMouseMove"
           @mouseup="onMouseUp"
@@ -118,7 +117,7 @@
             <div
               class="connector-dot left-dot"
               :ref="el => setRightDotRef(field.fieldName, el)"
-              @mousedown.prevent="startDrag(field.fieldName, 'target', $event)"
+              @mousedown.prevent="startDrag(field.fieldName, 'target')"
               @mouseup="onDotMouseUp(field.fieldName, 'target')"
             />
             <span class="item-label" :title="field.label">
@@ -206,7 +205,6 @@ const emit = defineEmits<{
 // ────────── DOM引用 ──────────
 const containerRef = ref<HTMLElement>()
 const svgAreaRef = ref<HTMLElement>()
-const svgRef = ref<SVGSVGElement>()
 const leftListRef = ref<HTMLElement>()
 const rightListRef = ref<HTMLElement>()
 
@@ -294,7 +292,7 @@ function getMidPoint(conn: Connection): { x: number; y: number } {
 }
 
 /** 开始拖拽创建连线 */
-function startDrag(key: string, side: 'source' | 'target', e: MouseEvent) {
+function startDrag(key: string, side: 'source' | 'target') {
   // 如果已连接，不允许再连
   if (side === 'source' && isSourceConnected(key)) return
   if (side === 'target' && isTargetConnected(key)) return
@@ -343,7 +341,7 @@ function onMouseUpGlobal() {
   document.removeEventListener('mouseup', onMouseUpGlobal)
 }
 
-function onMouseMove(e: MouseEvent) {
+function onMouseMove() {
   // SVG内鼠标移动也处理（备用）
 }
 

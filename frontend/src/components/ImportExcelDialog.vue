@@ -5,8 +5,8 @@ import { ElMessage } from 'element-plus'
 import { useModuleStore } from '@/stores/moduleStore'
 import { previewImport, parseExcelHeaders, previewImportWithMapping } from '@/api/data'
 import { withLoading } from '@/utils/loading'
-import ImportMappingDialog from './ImportMappingDialog.vue'
-import type { FormField, MappingItem, ImportMappingConfig } from '@/types'
+// import ImportMappingDialog from './ImportMappingDialog.vue'
+import type { FormField, MappingItem } from '@/types'
 import type { PreviewRow } from '@/api/data'
 
 const props = defineProps<{
@@ -16,9 +16,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'update:visible': [val: boolean]
+  (e: 'update:visible', val: boolean): void
   /** 预览结果，由 ModuleView 接收后打开 ImportPreviewDialog */
-  preview: [rows: PreviewRow[], batchId: string]
+  (e: 'preview', rows: PreviewRow[], batchId: string): void
 }>()
 
 const store = useModuleStore()
@@ -35,10 +35,6 @@ function handleFileChange(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (file) selectedFile.value = file
   ;(e.target as HTMLInputElement).value = ''
-}
-
-function clearFile() {
-  selectedFile.value = null
 }
 
 const fileSize = computed(() => {

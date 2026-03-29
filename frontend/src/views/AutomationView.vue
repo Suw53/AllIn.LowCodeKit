@@ -22,6 +22,22 @@ const menuName = computed(() => {
   return `模块 #${menuId.value}`
 })
 
+// ────────── 默认脚本模板 ──────────
+const DEFAULT_SCRIPT = `// 自动化脚本模板
+// 可用变量：
+//   Page  - Microsoft.Playwright.IPage，已连接到目标浏览器
+//   Log() - 输出日志消息
+
+// 示例：导航到指定页面并获取标题
+await Page.GotoAsync("https://example.com");
+var title = await Page.TitleAsync();
+Log($"页面标题：{title}");
+
+// 示例：查找元素并点击
+// await Page.ClickAsync("#submit-btn");
+// Log("已点击提交按钮");
+`
+
 // ────────── 自动化配置 ──────────
 const configName = ref('默认配置')
 const scriptCode = ref(DEFAULT_SCRIPT)
@@ -118,22 +134,6 @@ async function handleRun() {
 onMounted(async () => {
   await Promise.all([loadConfig(), loadLoginSchemes()])
 })
-
-// ────────── 默认脚本模板 ──────────
-const DEFAULT_SCRIPT = `// 自动化脚本模板
-// 可用变量：
-//   Page  - Microsoft.Playwright.IPage，已连接到目标浏览器
-//   Log() - 输出日志消息
-
-// 示例：导航到指定页面并获取标题
-await Page.GotoAsync("https://example.com");
-var title = await Page.TitleAsync();
-Log($"页面标题：{title}");
-
-// 示例：查找元素并点击
-// await Page.ClickAsync("#submit-btn");
-// Log("已点击提交按钮");
-`
 </script>
 
 <template>
